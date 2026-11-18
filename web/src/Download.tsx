@@ -102,6 +102,7 @@ const DIAGNOSE = String.raw`& {
 '== Service manager'; Get-WinEvent -LogName System -MaxEvents 400 | Where-Object { $_.ProviderName -eq 'Service Control Manager' -and $_.Message -like '*Child Monitor*' } | Select-Object -First 10 | Format-List TimeCreated,Message
 '== App errors'; Get-WinEvent -LogName Application -MaxEvents 400 | Where-Object { $_.ProviderName -in 'ChildMonitorSvc','.NET Runtime','Application Error' } | Select-Object -First 15 | Format-List TimeCreated,ProviderName,Message
 '== Smart App Control (0 off, 1 on, 2 evaluation)'; (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState
+'== Offline time'; Get-Content C:\ProgramData\ChildMonitor\offline.json -ErrorAction SilentlyContinue; netsh advfirewall show currentprofile firewallpolicy
 '== Build date'; (Get-Item 'C:\Program Files\ChildMonitor\Core.dll' -ErrorAction SilentlyContinue).LastWriteTime
 '== Server check (answer only, never the code)'; try { $c = Get-Content C:\ProgramData\ChildMonitor\config.json -Raw | ConvertFrom-Json
   Invoke-RestMethod -Method Post "$($c.supabaseUrl)/rest/v1/rpc/ingest" -Headers @{ apikey = $c.apiKey; Authorization = "Bearer $($c.apiKey)"; 'Content-Profile' = 'childmonitor' } -ContentType 'application/json' -Body (@{ token = $c.token; batch = @{} } | ConvertTo-Json) | ConvertTo-Json -Compress } catch { "failed: $($_.ErrorDetails.Message) $($_.Exception.Message)" }

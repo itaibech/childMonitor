@@ -1,9 +1,9 @@
-import type { ChangeEvent, CSSProperties } from 'react'
+import type { ChangeEvent, CSSProperties, FormEvent } from 'react'
 import { Avatar } from './art.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import * as data from './data.ts'
 import { Command } from './Download.tsx'
-import type { Child, Device, DeviceUser } from './types.ts'
+import type { Child, Device, DeviceUser, Offline } from './types.ts'
 
 function useAsync<T>(fn: () => Promise<T>): { value: T | null; error: string | null; reload: () => void } {
   const [value, setValue] = useState<T | null>(null)
@@ -168,6 +168,54 @@ function ChildrenSection({ children, onChange }: { children: Child[]; onChange: 
   )
 }
 
+const DEFAULT_OFFLINE: Offline = { enabled: false, weekday: { from: '21:30', to: '07:00' }, weekend: { from: '23:00', to: '08:00' } }
+
+function Night({ label, value, onChange }: { label: string; value: Offline['weekday']; onChange: (v: Offline['weekday']) => void }) {
+  return (
+    <fieldset className="night">
+      <legend>{label}</legend>
+      <label>From <input type="time" required value={value.from} onChange={(e) => onChange({ ...value, from: e.target.value })} /></label>
+      <label>Until <input type="time" required value={value.to} onChange={(e) => onChange({ ...value, to: e.target.value })} /></label>
+    </fieldset>
+  )
+}
+
+function OfflineForm({ child }: { child: Child }) {
+  const [value, setValue] = useState<Offline>(child.offline ?? DEFAULT_OFFLINE)
+  const [status, setStatus] = useState('')
+  const save = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setStatus('Saving…')
+    data.setOffline(child.id, value).then(
+      () => setStatus(value.enabled ? 'Saved. The laptop picks it up within 5 minutes.' : 'Saved. Offline time is off.'),
+      (err: unknown) => setStatus(`Could not save: ${err instanceof Error ? err.message : String(err)}`),
+    )
+  }
+  return (
+    <form className="offline" onSubmit={save} style={{ '--kid': child.color ?? 'var(--harbor)' } as CSSProperties}>
+      <h3><Avatar child={child} size={32} /> {child.name}</h3>
+      <label className="switch-row"><input type="checkbox" {...SWITCH} checked={value.enabled} onChange={(e) => setValue({ ...value, enabled: e.target.checked })} />
+        Turn the internet off at night</label>
+      <fieldset className="nights" disabled={!value.enabled}>
+        <Night label="Sunday to Thursday nights" value={value.weekday} onChange={(weekday) => setValue({ ...value, weekday })} />
+        <Night label="Friday and Saturday nights" value={value.weekend} onChange={(weekend) => setValue({ ...value, weekend })} />
+      </fieldset>
+      <button className="btn" type="submit">Save</button> <span role="status">{status}</span>
+    </form>
+  )
+}
+
+function OfflineSection({ children }: { children: Child[] }) {
+  if (children.length === 0) return null
+  return (
+    <section className="panel">
+      <h2>Offline time</h2>
+      <p className="muted">While a child is signed in to their laptop during these hours, the internet is off. Your own Windows account isn't affected.</p>
+      {children.map((c) => <OfflineForm key={c.id} child={c} />)}
+    </section>
+  )
+}
+
 export function Settings() {
   const kids = useAsync<Child[]>(data.fetchChildren)
   const devs = useAsync<Device[]>(data.fetchDevices)
@@ -180,6 +228,7 @@ export function Settings() {
     <div className="page">
       <h1>Settings</h1>
       <ChildrenSection children={kids.value} onChange={reload} />
+      <OfflineSection children={kids.value} />
       <AddLaptop children={kids.value} onAdded={devs.reload} />
       <h2>Laptops</h2>
       {devs.value.length === 0 && <p className="muted">No laptops yet. Add one above, then follow the <a href="#/download">Install</a> steps.</p>}

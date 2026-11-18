@@ -23,6 +23,7 @@ internal sealed class Worker : BackgroundService
     private readonly PipeServer _pipe;
     private readonly BrowserKiller _killer;
     private readonly SiteTracker _sites;
+    private readonly OfflineTime _offline;
     private readonly ILogger<Worker> _log;
     private readonly object _gate = new();
     private volatile IReadOnlySet<string> _supervised = new HashSet<string>();
@@ -35,6 +36,8 @@ internal sealed class Worker : BackgroundService
         _sites = new SiteTracker(Enqueue, logs.CreateLogger<SiteTracker>());
         _pipe = new PipeServer(_queue, () => _supervised, _sites.OnPipeRow, logs.CreateLogger<PipeServer>());
         _killer = new BrowserKiller(_sessions, () => _supervised, Enqueue, logs.CreateLogger<BrowserKiller>());
+        _offline = new OfflineTime(_sessions, () => _supervised, Record, logs.CreateLogger<OfflineTime>());
+        _uploader.OfflineReceived += json => Guard(() => _offline.Update(json));
         _store.Changed += OnSupervisionChanged;
     }
 
@@ -70,6 +73,7 @@ internal sealed class Worker : BackgroundService
         _sessions.Reconcile(_supervised);
         _killer.Sweep();
         _sites.Retry(_supervised);
+        _offline.Apply();
     }
 
     /// <summary>Queue all local accounts; while the server has never answered, derive supervision from them.</summary>
@@ -120,6 +124,7 @@ internal sealed class Worker : BackgroundService
 
     public void OnSessionChange(SessionChangeReason reason, int sessionId)
     {
+        Guard(_offline.Apply); // a switch of user at the screen (also console connect/disconnect) changes who is offline
         var kind = reason switch
         {
             SessionChangeReason.SessionLogon => "logon",

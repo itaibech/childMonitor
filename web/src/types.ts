@@ -3,6 +3,14 @@ export interface Child {
   name: string
   color: string | null
   photo: string | null // small square JPEG as a data URL
+  offline: Offline | null
+}
+
+/** Nightly offline time; a night belongs to the day it starts on, Friday and Saturday nights use `weekend`. */
+export interface Offline {
+  enabled: boolean
+  weekday: { from: string; to: string }
+  weekend: { from: string; to: string }
 }
 
 export interface Device {

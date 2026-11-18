@@ -45,6 +45,7 @@ function filterUser(day: DayData, user: string): DayData {
 const EVENT_LABEL: Record<string, string> = {
   logon: 'Signed in', logoff: 'Signed out', lock: 'Locked', unlock: 'Unlocked', suspend: 'Went to sleep', resume: 'Woke up',
   shutdown: 'Shut down', agent_start: 'Monitor started', browser_blocked: 'Blocked browser',
+  offline_on: 'Internet off for the night', offline_off: 'Internet back on',
 }
 
 function eventLabel(e: DeviceEvent): string {

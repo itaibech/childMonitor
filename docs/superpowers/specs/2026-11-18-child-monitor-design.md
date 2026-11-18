@@ -172,3 +172,20 @@ The extension is dropped (no store publishing, no extension IDs). Sites come fro
 - Unmatched titles (history not saved yet) are retried for 3 minutes, then dropped. Pages with an empty or generic title may match the wrong visit or none.
 - Policy `AllowDeletingBrowserHistory=0` (Chrome + Edge) keeps history; Incognito/InPrivate/Guest stay off.
 - Phase 3 site blocking uses the browsers' `URLBlocklist` policy instead of the extension.
+
+## Change (Itai, 2026-11-18): offline time
+
+Per child, the internet goes off at night while that child is the one at the screen (approach A: other accounts on
+the laptop aren't affected). Chosen over turning off the whole laptop (B) or locking the account at bedtime (C).
+
+- Schedule on `children.offline` (jsonb): `enabled`, `weekday` and `weekend` nights as `{from, to}` in HH:MM, laptop local
+  time. A night belongs to the day it starts on; nights starting Friday or Saturday are weekend nights. `from == to` means none.
+- `ingest` returns the child's schedule; the service keeps it in `C:\ProgramData\ChildMonitor\offline.json` so it
+  still applies without a connection.
+- Every 30 s and on every session change, the service checks the active console session: supervised child + inside
+  the schedule → Windows Firewall default outbound policy = block, else allow. install.ps1 adds outbound allow rules
+  (group "Child Monitor") for the service and DNS, so the laptop keeps reporting. Switches are recorded as
+  `offline_on` / `offline_off` events.
+- Known limits: apps with their own outbound allow rules still connect; a third-party firewall replaces Windows
+  Firewall and makes this ineffective; if the service dies mid-night the internet stays off until it restarts
+  (automatic restart, and the first check after start always resets the policy).

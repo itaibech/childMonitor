@@ -13,6 +13,7 @@ const m = vi.hoisted(() => ({
   renameChild: vi.fn(),
   deleteChild: vi.fn(),
   setChildPhoto: vi.fn(),
+  setOffline: vi.fn(),
 }))
 vi.mock('./data.ts', () => m)
 
@@ -46,6 +47,17 @@ describe('Settings', () => {
     render(<Settings />)
     fireEvent.click(await screen.findByRole('button', { name: 'Remove photo' }))
     await waitFor(() => expect(m.setChildPhoto).toHaveBeenCalledWith('c1', null))
+  })
+
+  it('saves offline time for a child', async () => {
+    m.setOffline.mockResolvedValue(undefined)
+    render(<Settings />)
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Turn the internet off at night' }))
+    fireEvent.change(screen.getAllByLabelText('From')[0], { target: { value: '21:00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(m.setOffline).toHaveBeenCalledWith('c1', {
+      enabled: true, weekday: { from: '21:00', to: '07:00' }, weekend: { from: '23:00', to: '08:00' },
+    }))
   })
 
   it('pairs a laptop and shows the token and install command', async () => {

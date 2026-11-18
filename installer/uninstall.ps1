@@ -39,6 +39,12 @@ function Reset-AdapterDns {
     }
 }
 
+# Undo offline time: internet back on, and the service's allow rules gone.
+function Remove-OfflineTime {
+    & netsh.exe advfirewall set allprofiles firewallpolicy blockinbound,allowoutbound | Out-Null
+    Get-NetFirewallRule -Group 'Child Monitor' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+}
+
 function Remove-DefenderExclusion {
     try { Remove-MpPreference -ExclusionPath $InstallDir }
     catch { Write-Warning "Could not remove Defender exclusion: $_" }
@@ -56,6 +62,7 @@ function Remove-AgentFiles {
 Remove-AgentService
 Remove-MachinePolicies
 Reset-AdapterDns
+Remove-OfflineTime
 Remove-DefenderExclusion
 Remove-AgentFiles
 Write-Host 'Child Monitor uninstalled. If the service was just deleted, a reboot may be needed to fully clear it.'

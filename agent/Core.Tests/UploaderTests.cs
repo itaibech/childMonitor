@@ -115,6 +115,16 @@ public sealed class UploaderTests : IDisposable
     }
 
     [Fact]
+    public async Task Offline_schedule_passed_on_from_response()
+    {
+        var (up, _, _, _) = Make((_, _, _) => (HttpStatusCode.OK, "{\"ok\":true,\"supervised_sids\":[],\"offline\":{\"enabled\":true}}"));
+        string? got = null;
+        up.OfflineReceived += json => got = json;
+        await up.FlushAsync(CancellationToken.None);
+        Assert.Equal("{\"enabled\":true}", got);
+    }
+
+    [Fact]
     public void Corrupt_supervision_file_loads_empty()
     {
         var path = Path.Combine(_dir, "bad.json");

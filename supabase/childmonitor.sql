@@ -9,6 +9,8 @@ create table if not exists childmonitor.children (
   color text,
   created_at timestamptz not null default now()
 );
+-- Nightly offline time, e.g. {"enabled":true,"weekday":{"from":"21:30","to":"07:00"},"weekend":{"from":"23:00","to":"08:00"}}
+alter table childmonitor.children add column if not exists offline jsonb check (offline is null or jsonb_typeof(offline) = 'object');
 
 create table if not exists childmonitor.devices (
   id uuid primary key default gen_random_uuid(),
@@ -199,7 +201,8 @@ begin
 
   select coalesce(jsonb_agg(sid order by sid), '[]'::jsonb) into sids
     from childmonitor.device_users where device_id = dev and supervised;
-  return jsonb_build_object('ok', true, 'accepted', n, 'supervised_sids', sids);
+  return jsonb_build_object('ok', true, 'accepted', n, 'supervised_sids', sids,
+    'offline', (select c.offline from childmonitor.devices d join childmonitor.children c on c.id = d.child_id where d.id = dev));
 end $$;
 
 revoke all on function childmonitor.ingest_sessions(uuid, jsonb) from public, anon, authenticated;

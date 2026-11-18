@@ -19,6 +19,9 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
 
     private enum Outcome { Ok, Poison, Stop }
 
+    /// <summary>The child's offline schedule as raw JSON ("null" when none), from every successful reply.</summary>
+    public event Action<string>? OfflineReceived;
+
     public async Task<int> FlushAsync(CancellationToken ct)
     {
         var sent = 0;
@@ -114,6 +117,8 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
             if (doc.ValueKind == JsonValueKind.Object
                 && doc.TryGetProperty("supervised_sids", out var sids) && sids.ValueKind == JsonValueKind.Array)
                 _supervision.Save(sids.EnumerateArray().Select(s => s.GetString()).OfType<string>());
+            if (doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("offline", out var offline))
+                OfflineReceived?.Invoke(offline.GetRawText());
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or IOException)
         {

@@ -39,3 +39,12 @@ Run `install.ps1` as admin with a token from the dashboard, then:
 - Turn on the admin account's switch -> within ~2 min its activity appears and Firefox is killed for it too.
 - Turn testkid off -> its activity stops within ~2 min.
 - Run `uninstall.ps1`: service gone, `C:\Program Files\ChildMonitor` and `C:\ProgramData\ChildMonitor` removed, DNS back to DHCP, policies gone in `chrome://policy`.
+
+### Offline time
+
+1. In Settings → Offline time, turn it on for the child with a window that includes now (e.g. From 00:00 Until 23:59). Save.
+2. Within 5 minutes (next upload), with the child signed in at the screen: web pages stop loading. The child's timeline
+   shows "Internet off for the night".
+3. Switch user to the parent account: within 30 s the internet works again. Switch back: off again.
+4. Turn offline time off in Settings: within 5 minutes the internet is back and the timeline shows "Internet back on".
+5. Diagnostics report, "Offline time" section: shows the schedule and `Policy ... BlockInbound,BlockOutbound` while off.

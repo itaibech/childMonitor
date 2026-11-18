@@ -1,5 +1,5 @@
 begin;
-select plan(40);
+select plan(41);
 
 -- as admin
 set local test.admin = 'on';
@@ -103,6 +103,12 @@ select throws_ok($$ insert into storage.objects(bucket_id, name) values ('childm
 set local test.admin = 'on';
 select is((select count(*)::int from storage.objects where bucket_id = 'childmonitor-client'), 1, 'admin can see client files');
 select lives_ok($$ insert into storage.objects(bucket_id, name) values ('childmonitor-client', 'y.zip') $$, 'admin can upload client files');
+reset role;
+
+-- offline schedule goes back to the laptop
+update childmonitor.children set offline = '{"enabled":true}' where id = (select child_id from childmonitor.devices where id = '00000000-0000-0000-0000-0000000000d2');
+set local role anon;
+select is((childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb))->'offline', '{"enabled":true}'::jsonb, 'ingest returns the child''s offline schedule');
 reset role;
 
 -- child photo: only small inline images

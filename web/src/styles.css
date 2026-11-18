@@ -327,3 +327,13 @@ details.panel[open] summary { margin-block-end: .75rem; }
 .file-btn:focus-within { outline: 3px solid var(--harbor); outline-offset: 3px; }
 .kid-name { display: flex; align-items: center; gap: .75rem; margin-block-end: .25rem; h2 { margin: 0; } }
 .kid-banner .kid-name h1 { margin: 0; }
+
+/* Settings: offline time */
+.offline { padding-block: 1rem; border-block-start: 1px solid var(--line-soft); }
+.offline h3 { display: flex; align-items: center; gap: .6rem; }
+.switch-row { display: flex; align-items: center; gap: .6rem; font-weight: 650; margin-block-end: .75rem; }
+.nights { display: flex; flex-wrap: wrap; gap: 1rem; border: 0; padding: 0; margin: 0 0 .75rem; }
+.nights:disabled { opacity: .5; }
+.night { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; border: 1.5px solid var(--line); border-radius: 16px; padding: .5rem .9rem .75rem; margin: 0; }
+.night legend { font-weight: 700; padding-inline: .3rem; }
+.night label { display: flex; gap: .4rem; align-items: center; }

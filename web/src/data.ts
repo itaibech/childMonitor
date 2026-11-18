@@ -1,5 +1,5 @@
 import { supabase } from './supabase.ts'
-import type { AppSession, Child, Device, DeviceEvent, DeviceUser, WebSession } from './types.ts'
+import type { AppSession, Child, Device, DeviceEvent, DeviceUser, Offline, WebSession } from './types.ts'
 import type { Range } from './usage.ts'
 
 export interface DayData {
@@ -113,6 +113,10 @@ export async function renameChild(id: string, name: string): Promise<void> {
 
 export async function setChildPhoto(id: string, photo: string | null): Promise<void> {
   check(await supabase.from('children').update({ photo }).eq('id', id))
+}
+
+export async function setOffline(id: string, offline: Offline): Promise<void> {
+  check(await supabase.from('children').update({ offline }).eq('id', id))
 }
 
 export async function deleteChild(id: string): Promise<void> {

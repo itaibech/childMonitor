@@ -118,6 +118,16 @@ function Set-AdapterDns {
     }
 }
 
+# During offline time the service switches the default outbound policy to block; these keep it reporting.
+function Set-OfflineRules {
+    Get-NetFirewallRule -Group 'Child Monitor' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    $exe = Join-Path $InstallDir 'ChildMonitorService.exe'
+    New-NetFirewallRule -DisplayName 'Child Monitor service' -Group 'Child Monitor' -Direction Outbound -Action Allow -Program $exe | Out-Null
+    foreach ($proto in 'UDP', 'TCP') {
+        New-NetFirewallRule -DisplayName "Child Monitor DNS ($proto)" -Group 'Child Monitor' -Direction Outbound -Action Allow -Protocol $proto -RemotePort 53 | Out-Null
+    }
+}
+
 function Add-DefenderExclusion {
     try { Add-MpPreference -ExclusionPath $InstallDir }
     catch { Write-Warning "Could not add Defender exclusion (is another antivirus active?): $_" }
@@ -130,5 +140,6 @@ Write-AgentConfig
 Install-AgentService
 Set-MachinePolicies
 Set-AdapterDns
+Set-OfflineRules
 Start-Service -Name $ServiceName
 Get-Service -Name $ServiceName | Format-Table Name, Status, StartType -AutoSize
