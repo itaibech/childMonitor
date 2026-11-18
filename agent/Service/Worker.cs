@@ -9,7 +9,7 @@ namespace Service;
 internal sealed class Worker : BackgroundService
 {
     public const string DataDir = @"C:\ProgramData\ChildMonitor";
-    private static readonly TimeSpan UploadEvery = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan UploadEvery = TimeSpan.FromMinutes(5); // also flushed before sleep/shutdown
     private static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan HeartbeatEvery = TimeSpan.FromSeconds(300);
     private static readonly TimeSpan UsersEvery = TimeSpan.FromHours(1);

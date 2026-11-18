@@ -96,6 +96,7 @@ const DIAGNOSE = String.raw`& {
 '== Data'; Get-ChildItem C:\ProgramData\ChildMonitor -ErrorAction SilentlyContinue | Format-Table Name,Length,LastWriteTime
 '== Supervised accounts'; Get-Content C:\ProgramData\ChildMonitor\supervised.json -ErrorAction SilentlyContinue; Get-CimInstance Win32_UserAccount -Filter 'LocalAccount=True' | Format-Table Name,SID,Disabled
 '== Signed in'; quser 2>&1
+'== Resource use (CPU seconds since start, memory MB)'; Get-Process ChildMonitorService,Helper,WmiPrvSE -ErrorAction SilentlyContinue | Format-Table Name,Id,@{n='CPU s';e={[int]$_.CPU}},@{n='Mem MB';e={[int]($_.WorkingSet64/1MB)}},StartTime
 '== Helper'; Get-Process Helper -IncludeUserName -ErrorAction SilentlyContinue | Format-Table Id,SessionId,UserName,StartTime
 '== Service manager'; Get-WinEvent -LogName System -MaxEvents 400 | Where-Object { $_.ProviderName -eq 'Service Control Manager' -and $_.Message -like '*Child Monitor*' } | Select-Object -First 10 | Format-List TimeCreated,Message
 '== App errors'; Get-WinEvent -LogName Application -MaxEvents 400 | Where-Object { $_.ProviderName -in 'ChildMonitorSvc','.NET Runtime','Application Error' } | Select-Object -First 15 | Format-List TimeCreated,ProviderName,Message

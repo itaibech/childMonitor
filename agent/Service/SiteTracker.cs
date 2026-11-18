@@ -12,7 +12,7 @@ namespace Service;
 internal sealed class SiteTracker(Action<QueueItem> enqueue, ILogger<SiteTracker> log)
 {
     private static readonly TimeSpan Keep = TimeSpan.FromHours(24);
-    private static readonly TimeSpan RefreshAfter = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan RefreshAfter = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan RetryFor = TimeSpan.FromMinutes(3);
     private const string ProfileList = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\";
 

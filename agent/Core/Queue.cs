@@ -12,6 +12,7 @@ public sealed class Queue
     {
         _connStr = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
         using var c = Open();
+        Exec(c, "PRAGMA journal_mode=WAL;"); // persistent: once per file
         Exec(c, "create table if not exists queue(seq integer primary key autoincrement, " +
                 "type text not null, id text not null unique, json text not null)");
     }
@@ -20,8 +21,10 @@ public sealed class Queue
     {
         var c = new SqliteConnection(_connStr);
         c.Open();
-        Exec(c, "PRAGMA journal_mode=WAL;");
         Exec(c, "PRAGMA busy_timeout=5000;");
+        // WAL + NORMAL: no disk flush per write (rows arrive many times a minute); a power cut can lose only the
+        // last few seconds, which the Helper resends on its next refresh anyway.
+        Exec(c, "PRAGMA synchronous=NORMAL;");
         return c;
     }
 
