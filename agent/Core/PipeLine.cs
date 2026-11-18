@@ -19,7 +19,7 @@ public static class PipeLine
     {
         WebRow? row;
         try { row = JsonSerializer.Deserialize<WebRow>(json, Wire.Options); }
-        catch (JsonException) { return null; }
+        catch (Exception e) when (e is JsonException or FormatException or ArgumentException) { return null; }
         if (row is null || row.Id is null || row.Browser is null || row.Url is null) return null;
         var title = row.Title ?? "";
         return Web(row with

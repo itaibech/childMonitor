@@ -134,16 +134,44 @@ public sealed class UploaderTests : IDisposable
         Assert.Equal(2, fired);
     }
 
+    private static (HttpStatusCode, string) RejectIfContains(string body, string id) => body.Contains(id)
+        ? (HttpStatusCode.BadRequest, "{\"message\":\"bad payload\"}")
+        : (HttpStatusCode.OK, Ok);
+
     [Fact]
-    public async Task Poison_batch_is_dropped_and_flush_continues()
+    public async Task Poison_batch_is_bisected_and_flush_continues()
     {
-        var (up, q, h, _) = Make((n, _, _) => n == 1
-            ? (HttpStatusCode.BadRequest, "{\"message\":\"bad payload\"}")
-            : (HttpStatusCode.OK, Ok));
+        var (up, q, h, _) = Make((_, _, body) => RejectIfContains(body, "id00007"));
         Fill(q, 600);
-        Assert.Equal(100, await up.FlushAsync(CancellationToken.None));
-        Assert.Equal(new[] { 500, 100 }, h.Calls.Select(c => Count(c.Body)));
+        Assert.Equal(599, await up.FlushAsync(CancellationToken.None));
         Assert.Empty(q.Oldest(10));
+        Assert.Equal(100, Count(h.Calls[^1].Body));
+    }
+
+    [Fact]
+    public async Task One_bad_row_among_500_drops_only_that_row()
+    {
+        var (up, q, h, _) = Make((_, _, body) => RejectIfContains(body, "\"id00250\""));
+        Fill(q, 500);
+        Assert.Equal(499, await up.FlushAsync(CancellationToken.None));
+        Assert.Empty(q.Oldest(10));
+        var accepted = h.Calls.Where(c => !c.Body.Contains("\"id00250\"")).Sum(c => Count(c.Body));
+        Assert.Equal(499, accepted);
+        Assert.True(h.Calls.Count <= 2 * 9 + 1, $"{h.Calls.Count} requests");
+    }
+
+    [Fact]
+    public async Task Stop_during_bisect_keeps_unsent_rows()
+    {
+        var (up, q, _, _) = Make((n, _, _) => n switch
+        {
+            1 => (HttpStatusCode.BadRequest, "{\"message\":\"bad payload\"}"),
+            2 => (HttpStatusCode.OK, Ok),
+            _ => (HttpStatusCode.InternalServerError, ""),
+        });
+        Fill(q, 500);
+        Assert.Equal(250, await up.FlushAsync(CancellationToken.None));
+        Assert.Equal(250, q.Oldest(1000).Count);
     }
 
     [Fact]

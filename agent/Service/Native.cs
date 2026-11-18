@@ -167,4 +167,24 @@ internal static class Native
             CloseHandle(token);
         }
     }
+
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageNameW(IntPtr process, int flags, char[] name, ref int size);
+
+    /// <summary>Full image path of a process (works at process start, unlike MainModule); null on failure.</summary>
+    public static string? ImagePath(int pid)
+    {
+        var handle = OpenProcess(ProcessQueryLimitedInformation, false, pid);
+        if (handle == IntPtr.Zero) return null;
+        try
+        {
+            var buf = new char[32768];
+            var size = buf.Length;
+            return QueryFullProcessImageNameW(handle, 0, buf, ref size) ? new string(buf, 0, size) : null;
+        }
+        finally { CloseHandle(handle); }
+    }
 }

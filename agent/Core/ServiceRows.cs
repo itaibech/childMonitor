@@ -22,3 +22,24 @@ public static class ServiceRows
     public static QueueItem User(UserRow user) =>
         new("user", user.Sid, JsonSerializer.Serialize(user, Wire.Options));
 }
+
+/// <summary>How urgently the service must upload after recording an event.</summary>
+public enum FlushMode
+{
+    /// <summary>Wait for the regular upload tick.</summary>
+    None,
+    /// <summary>Start an upload now in the background (the machine keeps running).</summary>
+    Immediate,
+    /// <summary>Upload synchronously, bounded, before returning (the machine is about to sleep or stop).</summary>
+    Blocking,
+}
+
+public static class FlushPolicy
+{
+    public static FlushMode For(string kind) => kind switch
+    {
+        "shutdown" or "suspend" => FlushMode.Blocking,
+        "logoff" or "lock" => FlushMode.Immediate,
+        _ => FlushMode.None,
+    };
+}

@@ -16,6 +16,7 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
     private const int MaxInstances = 32;
     private const int MaxLine = 64 * 1024;
     private const int ChunkSize = 4096;
+    private static readonly TimeSpan FirstReadTimeout = TimeSpan.FromSeconds(10);
 
     private int _live;
 
@@ -85,16 +86,17 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
         try
         {
             var buf = new byte[ChunkSize];
-            var n = await pipe.ReadAsync(buf, ct); // impersonation needs a read first; this one is bounded
+            var n = await FirstReadAsync(pipe, buf, ct); // impersonation needs a read first; bounded in size and time
             if (n == 0) return;
             var client = Identify(pipe);
             if (client is null || !supervised().Contains(client.Sid)) return; // disconnect at once
             var splitter = new LineSplitter(MaxLine);
+            var limiter = new PipeRateLimiter();
             var lines = new List<string>();
             for (; n > 0; n = await pipe.ReadAsync(buf, ct))
             {
                 var ok = splitter.TryFeed(buf.AsSpan(0, n), lines);
-                foreach (var line in lines) Accept(line, client);
+                if (!AcceptAll(lines, client, limiter)) return; // flooding: drop the rest and the client
                 lines.Clear();
                 if (!ok) return; // oversized line: drop the client
             }
@@ -102,6 +104,30 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
         catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException) { }
         catch (Exception e) { log.LogWarning(e, "Pipe client failed"); }
         finally { Release(pipe); }
+    }
+
+    /// <summary>A client that connects and stays silent is disconnected after 10 s (throws OperationCanceled).</summary>
+    private static async Task<int> FirstReadAsync(NamedPipeServerStream pipe, byte[] buf, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(FirstReadTimeout);
+        return await pipe.ReadAsync(buf, timeout.Token);
+    }
+
+    /// <summary>Queues each line; false once the client exceeds its row budget (remaining lines are dropped).</summary>
+    private bool AcceptAll(List<string> lines, Client client, PipeRateLimiter limiter)
+    {
+        foreach (var line in lines)
+        {
+            if (!limiter.TryTake(DateTimeOffset.UtcNow))
+            {
+                log.LogWarning("Pipe client {User} exceeded {Max} rows/min; disconnecting", client.WinUser,
+                    PipeRateLimiter.MaxRowsPerMinute);
+                return false;
+            }
+            Accept(line, client);
+        }
+        return true;
     }
 
     private void Accept(string line, Client client)

@@ -34,4 +34,16 @@ public sealed class ServiceRowsTests
         Assert.Equal(("user", "S-1"), (item.Type, item.Id));
         Assert.Equal("{\"sid\":\"S-1\",\"win_user\":\"PC\\\\kid\",\"is_admin\":false}", item.Json);
     }
+
+    [Theory]
+    [InlineData("shutdown", FlushMode.Blocking)]
+    [InlineData("suspend", FlushMode.Blocking)]
+    [InlineData("logoff", FlushMode.Immediate)]
+    [InlineData("lock", FlushMode.Immediate)]
+    [InlineData("logon", FlushMode.None)]
+    [InlineData("unlock", FlushMode.None)]
+    [InlineData("resume", FlushMode.None)]
+    [InlineData("heartbeat", FlushMode.None)]
+    public void Flush_policy_by_event_kind(string kind, FlushMode expected) =>
+        Assert.Equal(expected, FlushPolicy.For(kind));
 }

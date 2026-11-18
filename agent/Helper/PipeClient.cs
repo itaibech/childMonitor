@@ -11,6 +11,8 @@ internal sealed class PipeClient : IDisposable
 {
     public const string PipeName = "ChildMonitorPipe";
     private static readonly TimeSpan RetryEvery = TimeSpan.FromSeconds(5);
+    /// <summary>Stay under the service's per-connection budget (PipeRateLimiter) by reconnecting per chunk.</summary>
+    private const int MaxLinesPerConnection = 500;
 
     private readonly SendBuffer _buffer = new();
     private readonly AutoResetEvent _wake = new(false);
@@ -49,12 +51,20 @@ internal sealed class PipeClient : IDisposable
                 _wake.WaitOne(1000);
                 continue;
             }
-            if (!TryWrite(lines))
-            {
-                _buffer.Requeue(lines);
-                _cts.Token.WaitHandle.WaitOne(RetryEvery);
-            }
+            if (!TryWriteChunks(lines)) _cts.Token.WaitHandle.WaitOne(RetryEvery);
         }
+    }
+
+    /// <summary>Writes in chunks, one connection each; on failure requeues the unsent remainder.</summary>
+    private bool TryWriteChunks(List<string> lines)
+    {
+        for (var i = 0; i < lines.Count; i += MaxLinesPerConnection)
+        {
+            if (TryWrite(lines.GetRange(i, Math.Min(MaxLinesPerConnection, lines.Count - i)))) continue;
+            _buffer.Requeue(lines.GetRange(i, lines.Count - i));
+            return false;
+        }
+        return true;
     }
 
     private static bool TryWrite(List<string> lines)

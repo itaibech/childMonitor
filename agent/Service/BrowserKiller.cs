@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Management;
 using Core;
@@ -5,7 +6,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Service;
 
-/// <summary>Kills blocklisted browsers started in supervised users' sessions and reports browser_blocked.</summary>
+/// <summary>
+/// Kills blocklisted browsers (by exe name or PE OriginalFilename) started in supervised users' sessions and
+/// reports browser_blocked.
+/// </summary>
 internal sealed class BrowserKiller(
     SessionLauncher sessions, Func<IReadOnlySet<string>> supervised, Action<QueueItem> enqueue,
     ILogger<BrowserKiller> log) : IDisposable
@@ -13,6 +17,7 @@ internal sealed class BrowserKiller(
     private static readonly TimeSpan ReportEvery = TimeSpan.FromSeconds(30);
 
     private readonly Dictionary<(string, string), DateTimeOffset> _lastReport = new();
+    private readonly ConcurrentDictionary<string, string> _originalNames = new(StringComparer.OrdinalIgnoreCase);
     private ManagementEventWatcher? _watcher;
 
     public void Start()
@@ -25,11 +30,17 @@ internal sealed class BrowserKiller(
     /// <summary>Fallback sweep (watcher can miss events): kill blocked browsers already running.</summary>
     public void Sweep()
     {
+        var users = new Dictionary<int, SessionUser?>();
         foreach (var p in Process.GetProcesses())
         {
             using (p)
             {
-                try { Handle(p.ProcessName + ".exe", p.Id, p.SessionId); }
+                try
+                {
+                    if (!users.TryGetValue(p.SessionId, out var user))
+                        users[p.SessionId] = user = SupervisedUser(p.SessionId);
+                    if (user is not null) Handle(p.ProcessName + ".exe", p.Id, user);
+                }
                 catch (InvalidOperationException) { /* exited */ }
             }
         }
@@ -39,25 +50,54 @@ internal sealed class BrowserKiller(
     {
         try
         {
-            using (e) Handle((string)e["ProcessName"], (int)(uint)e["ProcessID"], (int)(uint)e["SessionID"]);
+            using (e)
+            {
+                var user = SupervisedUser((int)(uint)e["SessionID"]);
+                if (user is not null) Handle((string)e["ProcessName"], (int)(uint)e["ProcessID"], user);
+            }
         }
         catch (Exception ex) { log.LogWarning(ex, "Process start handling failed"); }
     }
 
-    private void Handle(string exe, int pid, int sessionId)
+    private SessionUser? SupervisedUser(int sessionId)
     {
-        if (!BrowserBlocklist.IsBlocked(exe)) return;
         var user = sessions.UserOf(sessionId);
-        if (user is null || !supervised().Contains(user.Sid)) return;
+        return user is not null && supervised().Contains(user.Sid) ? user : null;
+    }
+
+    private void Handle(string exe, int pid, SessionUser user)
+    {
+        if (!IsBlocked(exe, pid)) return;
         try
         {
             using var p = Process.GetProcessById(pid);
-            if (!BrowserBlocklist.IsBlocked(p.ProcessName + ".exe")) return; // PID reused since the event
+            if (!IsBlocked(p.ProcessName + ".exe", pid)) return; // PID reused since the event
             p.Kill();
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException
                                       or System.ComponentModel.Win32Exception) { return; }
         Report(user.WinUser, exe.ToLowerInvariant());
+    }
+
+    private bool IsBlocked(string exe, int pid) =>
+        BrowserBlocklist.IsBlocked(exe) || BrowserBlocklist.IsBlocked(exe, OriginalFilename(pid));
+
+    /// <summary>PE OriginalFilename of the process image, cached per path (failures are retried); null if unknown.</summary>
+    private string? OriginalFilename(int pid)
+    {
+        var path = Native.ImagePath(pid);
+        if (path is null) return null;
+        if (_originalNames.TryGetValue(path, out var known)) return known;
+        try
+        {
+            var name = FileVersionInfo.GetVersionInfo(path).OriginalFilename ?? "";
+            _originalNames[path] = name;
+            return name;
+        }
+        catch (Exception e) when (e is FileNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>One browser launch spawns many processes; report at most once per user+exe per 30 s.</summary>

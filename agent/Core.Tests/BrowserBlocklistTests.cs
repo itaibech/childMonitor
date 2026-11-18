@@ -27,4 +27,21 @@ public sealed class BrowserBlocklistTests
         Assert.False(BrowserBlocklist.IsBlocked(@"C:\firefox.exe\notepad.exe"));
         Assert.False(BrowserBlocklist.IsBlocked(""));
     }
+
+    [Fact]
+    public void Renamed_firefox_is_blocked_by_original_filename()
+    {
+        Assert.True(BrowserBlocklist.IsBlocked("game.exe", "firefox.exe"));
+        Assert.True(BrowserBlocklist.IsBlocked("game.exe", "FIREFOX.EXE"));
+        Assert.False(BrowserBlocklist.IsBlocked("game.exe", null));
+        Assert.False(BrowserBlocklist.IsBlocked("game.exe", ""));
+    }
+
+    [Theory]
+    [InlineData("chrome.exe", "chrome.exe")]
+    [InlineData("chrome.exe", null)]
+    [InlineData("msedge.exe", "msedge.exe")]
+    [InlineData("game.exe", "chrome.exe")]
+    public void Chrome_and_edge_are_never_blocked(string exe, string? original) =>
+        Assert.False(BrowserBlocklist.IsBlocked(exe, original));
 }

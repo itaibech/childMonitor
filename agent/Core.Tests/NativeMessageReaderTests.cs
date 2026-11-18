@@ -73,6 +73,17 @@ public sealed class NativeMessageReaderTests
         Assert.Null(PipeLine.FromExtension("{\"id\":\"i\"}", "u"));
     }
 
+    [Theory]
+    [InlineData("\"garbage\"")]
+    [InlineData("null")]
+    [InlineData("\"\"")]
+    public void web_message_with_bad_date_is_rejected(string startedAt)
+    {
+        var json = "{\"id\":\"i\",\"browser\":\"edge\",\"url\":\"https://x\",\"title\":\"t\"," +
+                   "\"started_at\":" + startedAt + ",\"ended_at\":\"2026-11-18T15:01:00Z\"}";
+        Assert.Null(PipeLine.FromExtension(json, "u"));
+    }
+
     [Fact]
     public void send_buffer_drops_oldest_beyond_capacity()
     {

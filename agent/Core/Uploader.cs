@@ -26,14 +26,31 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
         {
             var all = q.Oldest(BatchSize);
             if (all.Count == 0 && !first) break;
-            var rows = DropCorrupt(all);
-            var outcome = await PostAsync(rows, ct);
-            if (outcome == Outcome.Stop) break;
-            if (rows.Count > 0) q.Delete(rows);
-            if (outcome == Outcome.Ok) sent += rows.Count;
-            if (all.Count < BatchSize) break;
+            var (acked, stop) = await SendAsync(DropCorrupt(all), ct);
+            sent += acked;
+            if (stop || all.Count < BatchSize) break;
         }
         return sent;
+    }
+
+    /// <summary>
+    /// Posts <paramref name="rows"/>; on a poison 4xx bisects and retries the halves, so only single rows the
+    /// server still rejects are dropped. Returns rows accepted and whether to stop (keep the rest queued).
+    /// </summary>
+    private async Task<(int Sent, bool Stop)> SendAsync(List<QueuedRow> rows, CancellationToken ct)
+    {
+        var outcome = await PostAsync(rows, ct);
+        if (outcome == Outcome.Stop) return (0, true);
+        if (outcome == Outcome.Ok || rows.Count <= 1)
+        {
+            if (rows.Count > 0) q.Delete(rows);
+            return (outcome == Outcome.Ok ? rows.Count : 0, false);
+        }
+        var mid = rows.Count / 2;
+        var left = await SendAsync(rows[..mid], ct);
+        if (left.Stop) return left;
+        var right = await SendAsync(rows[mid..], ct);
+        return (left.Sent + right.Sent, right.Stop);
     }
 
     private List<QueuedRow> DropCorrupt(IReadOnlyList<QueuedRow> rows)

@@ -13,6 +13,7 @@ internal sealed class Worker : BackgroundService
     private static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan HeartbeatEvery = TimeSpan.FromSeconds(300);
     private static readonly TimeSpan UsersEvery = TimeSpan.FromHours(1);
+    private static readonly TimeSpan BlockingFlushLimit = TimeSpan.FromSeconds(4);
 
     private readonly Queue _queue = new(Path.Combine(DataDir, "queue.db"));
     private readonly SupervisionStore _store = new(SupervisionStore.DefaultPath);
@@ -129,7 +130,7 @@ internal sealed class Worker : BackgroundService
         {
             var user = _sessions.UserOf(sessionId);
             if (user is null || !_supervised.Contains(user.Sid)) return;
-            Record(kind, user.WinUser);
+            RecordAndFlush(kind, user.WinUser);
             if (kind is "logon" or "unlock") _sessions.EnsureRunning(sessionId);
             if (kind is "logoff") _sessions.Stop(sessionId);
         });
@@ -137,17 +138,50 @@ internal sealed class Worker : BackgroundService
 
     public void OnPowerEvent(PowerBroadcastStatus status)
     {
-        if (status == PowerBroadcastStatus.Suspend) Guard(() => Record("suspend", ""));
+        if (status == PowerBroadcastStatus.Suspend) Guard(() => RecordAndFlush("suspend", ""));
         else if (status == PowerBroadcastStatus.ResumeAutomatic) Guard(() => Record("resume", ""));
     }
 
-    public void OnShutdown() => Guard(() => Record("shutdown", ""));
+    public void OnShutdown() => Guard(() => RecordAndFlush("shutdown", ""));
 
     /// <summary>SCM callbacks must never throw into the service host.</summary>
     private void Guard(Action action)
     {
         try { action(); }
         catch (Exception e) { _log.LogWarning(e, "Service event handling failed"); }
+    }
+
+    /// <summary>
+    /// Records the event and uploads per <see cref="FlushPolicy"/>: before sleep/shutdown a bounded synchronous
+    /// flush inside the SCM callback (otherwise the event only arrives after the next boot); on logoff/lock an
+    /// immediate background flush instead of waiting for the 60 s tick.
+    /// </summary>
+    private void RecordAndFlush(string kind, string winUser)
+    {
+        Record(kind, winUser);
+        switch (FlushPolicy.For(kind))
+        {
+            case FlushMode.Blocking: FlushBlocking(); break;
+            case FlushMode.Immediate: _ = Task.Run(FlushNowAsync); break;
+        }
+    }
+
+    private void FlushBlocking()
+    {
+        // Not disposed: on timeout the abandoned flush still observes this token; the timer fires and frees it.
+        var cts = new CancellationTokenSource(BlockingFlushLimit);
+        try
+        {
+            if (!Task.Run(() => _uploader.FlushAsync(cts.Token)).Wait(BlockingFlushLimit))
+                _log.LogWarning("Pre-sleep/shutdown upload did not finish in {Limit}", BlockingFlushLimit);
+        }
+        catch (AggregateException e) { _log.LogWarning(e.InnerException, "Pre-sleep/shutdown upload failed"); }
+    }
+
+    private async Task FlushNowAsync()
+    {
+        try { await _uploader.FlushAsync(CancellationToken.None); }
+        catch (Exception e) { _log.LogWarning(e, "Immediate upload failed"); }
     }
 
     private void Enqueue(QueueItem item) => _queue.Upsert(item.Type, item.Id, item.Json);
