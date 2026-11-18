@@ -70,3 +70,76 @@ export function DayClock({ minutes, totalMs, color, size = 132 }: { minutes: num
     </figure>
   )
 }
+
+/**
+ * Column chart (hours of a day, days of a week, or a mini 7-day chart). Values share one scale; an optional dashed
+ * line marks the average. Each column has a tooltip and the whole chart a spoken summary.
+ */
+export function Columns(p: { values: number[]; labels: string[]; titles: string[]; label: string; max?: number; avg?: number; mini?: boolean }) {
+  const max = p.max ?? Math.max(1, ...p.values, p.avg ?? 0)
+  return (
+    <div className={p.mini ? 'cols mini' : 'cols'} role="img" aria-label={p.label}>
+      <div className="plot">
+        {p.avg !== undefined && p.avg > 0 && <div className="avg" style={{ '--a': p.avg / max } as CSSProperties} />}
+        {p.values.map((v, i) => (
+          <div key={i} className="bar" title={p.titles[i]} style={{ '--h': Math.min(v, max) / max, '--i': i } as CSSProperties} />
+        ))}
+      </div>
+      {!p.mini && <div className="col-labels" aria-hidden="true">{p.labels.map((l, i) => <span key={i}>{l}</span>)}</div>}
+    </div>
+  )
+}
+
+/** Days × hours grid; darker cells mean more minutes used in that hour. */
+export function Heatmap({ rows, days }: { rows: number[][]; days: string[] }) {
+  return (
+    <div className="heat" role="img" aria-label="Minutes used in each hour of each day">
+      {rows.map((hours, d) => (
+        <div key={d} className="heat-row">
+          <span className="heat-day">{days[d]}</span>
+          {hours.map((min, h) => (
+            <span key={h} className="cell" style={{ '--v': Math.min(min, 60) / 60 } as CSSProperties}
+              title={`${days[d]} ${String(h).padStart(2, '0')}:00 · ${Math.round(min)} min`} />
+          ))}
+        </div>
+      ))}
+      <div className="heat-row heat-axis" aria-hidden="true">
+        <span className="heat-day" />
+        {Array.from({ length: 24 }, (_, h) => <span key={h}>{h % 6 === 0 ? String(h).padStart(2, '0') : ''}</span>)}
+      </div>
+    </div>
+  )
+}
+
+/** Ring split into categories, with a legend that carries the numbers for screen readers. */
+export function Donut({ parts, total }: { parts: Array<{ key: string; ms: number }>; total: number }) {
+  const C = 2 * Math.PI * 40
+  let offset = 0
+  return (
+    <div className="donut">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="40" className="donut-track" />
+        {parts.map((p) => {
+          const len = total > 0 ? (p.ms / total) * C : 0
+          const seg = <circle key={p.key} cx="50" cy="50" r="40" className={`seg cat-${p.key}`} strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />
+          offset += len
+          return seg
+        })}
+      </svg>
+      <ul className="legend">
+        {parts.map((p) => (
+          <li key={p.key}><span className={`dot cat-${p.key}`} />{p.key}<span className="time">{fmtDuration(p.ms)} · {Math.round((p.ms / total) * 100)}%</span></li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Placeholder shapes while a page loads, so the layout doesn't jump. */
+export function Skeleton() {
+  return (
+    <div className="page" aria-busy="true" aria-label="Loading">
+      <div className="sk sk-banner" /><div className="sk sk-panel" /><div className="sk sk-panel" />
+    </div>
+  )
+}

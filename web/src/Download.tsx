@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { DownloadArt } from './art.tsx'
 import * as data from './data.ts'
 import type { ClientFile, Diagnostic } from './data.ts'
+import { summarizeReport } from './health.ts'
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -111,43 +112,86 @@ const DIAGNOSE = String.raw`& {
   Get-Content "$env:TEMP\cm-err.txt","$env:TEMP\cm-out.txt" -ErrorAction SilentlyContinue } else { 'skipped: service is running' }
 } *>&1 | Out-String -Width 200 | Set-Clipboard; 'Copied. Paste it on the Diagnostics page.'`
 
-export function Diagnose() {
-  const [reports, setReports] = useState<Diagnostic[]>([])
+function Checklist({ body }: { body: string }) {
+  const checks = summarizeReport(body)
+  const failed = checks.filter((c) => c.ok === false)
+  return (
+    <>
+      <p className={failed.length ? 'verdict bad' : 'verdict good'}>
+        {failed.length ? `${failed.length} ${failed.length === 1 ? 'problem' : 'problems'} found` : 'No problems found'}
+      </p>
+      <ul className="checks">
+        {checks.map((c) => (
+          <li key={c.label} className={c.ok === null ? 'unknown' : c.ok ? 'pass' : 'fail'}>
+            <span className="sr-only">{c.ok === null ? 'Not checked:' : c.ok ? 'OK:' : 'Problem:'}</span>
+            {c.label}{c.ok === false && <span className="fix">{c.fix}</span>}
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+function Report({ r, open }: { r: Diagnostic; open: boolean }) {
+  return (
+    <details className="panel report" open={open}>
+      <summary>Report from {new Date(r.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</summary>
+      <Checklist body={r.body} />
+      <details className="raw">
+        <summary>Full report</summary>
+        <div className="raw-actions"><CopyButton text={r.body} what="report" /></div>
+        <pre>{r.body}</pre>
+      </details>
+    </details>
+  )
+}
+
+function SendForm({ onSent }: { onSent: () => Promise<void> }) {
   const [status, setStatus] = useState('')
-  const load = () => data.fetchDiagnostics().then(setReports, (e: unknown) => setStatus(message(e)))
-  useEffect(() => { void load() }, [])
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = e.currentTarget
     const body = String(new FormData(form).get('report') ?? '').trim()
     if (!body) return
+    setStatus('Sending…')
     try {
       await data.sendDiagnostics(body)
       form.reset()
-      setStatus('Sent.')
-      await load()
+      setStatus('Sent. The checklist is below.')
+      await onSent()
     } catch (err) {
       setStatus(`Could not send: ${message(err)}`)
     }
   }
   return (
+    <form className="send" onSubmit={(e) => void submit(e)}>
+      <label htmlFor="report">Report</label>
+      <textarea id="report" name="report" required spellCheck={false} placeholder="Paste the report here" />
+      <button className="btn" type="submit">Send report</button>
+      <p role="status">{status}</p>
+    </form>
+  )
+}
+
+export function Diagnose() {
+  const [reports, setReports] = useState<Diagnostic[] | null>(null)
+  const [error, setError] = useState('')
+  const load = () => data.fetchDiagnostics().then(setReports, (e: unknown) => setError(message(e)))
+  useEffect(() => { void load() }, [])
+  return (
     <div className="page diagnose">
       <h1>Diagnostics</h1>
-      <p>If a laptop isn't reporting, paste this into an administrator PowerShell on it. It copies a report to the clipboard; it never includes the install code.</p>
-      <Command text={DIAGNOSE} what="diagnostics command" />
-      <form onSubmit={(e) => void submit(e)}>
-        <label htmlFor="report">Report</label>
-        <textarea id="report" name="report" required spellCheck={false} placeholder="Paste the report here" />
-        <button className="btn" type="submit">Send report</button>
-      </form>
-      <p role="status">{status}</p>
-      {reports.map((r) => (
-        <details key={r.id}>
-          <summary>Report from {new Date(r.created_at).toLocaleString('en-GB')}</summary>
-          <CopyButton text={r.body} what="report" />
-          <pre>{r.body}</pre>
-        </details>
-      ))}
+      <p className="lede">Check a laptop that isn't reporting. The report lists what's running and what's wrong; it never includes the install code.</p>
+      <ol className="steps">
+        <li><h3>Copy the check</h3><Command text={DIAGNOSE} what="diagnostics command" /></li>
+        <li><h3>Run it on the laptop</h3><p>Open PowerShell as administrator, paste and press Enter. When it says Copied, the report is on the clipboard.</p></li>
+        <li><h3>Paste the report here</h3><SendForm onSent={load} /></li>
+      </ol>
+      <h2>Reports</h2>
+      {error && <p role="alert">Could not load reports: {error}</p>}
+      {reports === null && !error && <div className="sk sk-panel" aria-busy="true" aria-label="Loading reports" />}
+      {reports?.length === 0 && <p className="muted">No reports yet.</p>}
+      {reports?.map((r, i) => <Report key={r.id} r={r} open={i === 0} />)}
     </div>
   )
 }

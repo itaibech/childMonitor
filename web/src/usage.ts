@@ -132,3 +132,88 @@ export function fmtDuration(ms: number): string {
   const min = Math.round(ms / MIN_MS)
   return min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `${min}m`
 }
+
+/** YYYY-MM-DD n days after date (n may be negative). */
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
+
+/** The 7 dates ending on (and including) date, oldest first. */
+export function weekDates(date: string): string[] {
+  return [6, 5, 4, 3, 2, 1, 0].map((n) => addDays(date, -n))
+}
+
+/** From the start of the first date to the end of the last. */
+export function spanRange(first: string, last: string): Range {
+  return { start: dayRange(first).start, end: dayRange(last).end }
+}
+
+export function dailyMs(rows: Timed[], dates: string[]): number[] {
+  return dates.map((d) => screenTimeMs(rows, dayRange(d)))
+}
+
+/** First and last use, and the longest stretch of use (gaps under 2 minutes don't break it). */
+export function dayFacts(rows: Timed[], range: Range): { first: number | null; last: number | null; longestMs: number } {
+  const runs: Array<[number, number]> = []
+  for (const [s, e] of mergedIntervals(rows, range)) {
+    const last = runs[runs.length - 1]
+    if (last && s - last[1] < 2 * MIN_MS) last[1] = e
+    else runs.push([s, e])
+  }
+  const longestMs = runs.reduce((m, [s, e]) => Math.max(m, e - s), 0)
+  return { first: runs[0]?.[0] ?? null, last: runs[runs.length - 1]?.[1] ?? null, longestMs }
+}
+
+/** Use between 22:00 on date and 05:00 the next morning (Jerusalem). */
+export function lateMs(rows: Timed[], date: string): number {
+  const start = dayRange(date).start.getTime() + 22 * HOUR_MS
+  const end = dayRange(addDays(date, 1)).start.getTime() + 5 * HOUR_MS
+  return screenTimeMs(rows, { start: new Date(start), end: new Date(end) })
+}
+
+export type Category = 'Games' | 'Video' | 'Social' | 'School' | 'Browsing' | 'Other'
+export const CATEGORIES: Category[] = ['Games', 'Video', 'Social', 'School', 'Browsing', 'Other']
+
+// ponytail: small built-in lists of common apps and sites; extend as new names show up in the reports.
+const APP_WORDS: Array<[RegExp, Category]> = [
+  [/roblox|minecraft|steam|epicgames|fortnite|valorant|leagueoflegends|riotclient|xboxapp|gamebar|solitaire/, 'Games'],
+  [/netflix|vlc|spotify|disney|primevideo|wmplayer|video\.ui|mpc-hc/, 'Video'],
+  [/whatsapp|discord|telegram|instagram|tiktok|messenger|snapchat/, 'Social'],
+  [/winword|excel|powerpnt|onenote|teams|zoom|acrobat|acrord32|notion|geogebra|scratch/, 'School'],
+]
+const SITE_WORDS: Array<[RegExp, Category]> = [
+  [/(^|\.)(roblox|poki|crazygames|miniclip|chess|lichess|coolmathgames|friv|twitch)\./, 'Games'],
+  [/(^|\.)(youtube|youtu|netflix|disneyplus|primevideo|vimeo|spotify|sdarot|kan)\./, 'Video'],
+  [/(^|\.)(tiktok|instagram|facebook|whatsapp|discord|snapchat|reddit|x|twitter|telegram|pinterest)\./, 'Social'],
+  [/(^|\.)(classroom\.google|docs\.google|drive\.google|khanacademy|wikipedia|duolingo|mashov|webtop|office|canva|geogebra|scratch\.mit|edu|gov)\./, 'School'],
+]
+const BROWSERS = /^(chrome|msedge|firefox|brave|opera|iexplore)\.exe$/
+
+export function appCategory(process: string): Category {
+  const p = process.toLowerCase()
+  return BROWSERS.test(p) ? 'Browsing' : APP_WORDS.find(([re]) => re.test(p))?.[1] ?? 'Other'
+}
+
+export function siteCategory(domain: string): Category {
+  const d = `${domain.toLowerCase()}.`
+  return SITE_WORDS.find(([re]) => re.test(d))?.[1] ?? 'Browsing'
+}
+
+/** Time per category: browser time is split by the sites seen; browser time without a matched site stays Browsing. */
+export function byCategory(
+  apps: Array<Timed & { process: string }>, web: Array<Timed & { domain: string }>, range: Range,
+): Array<{ key: Category; ms: number }> {
+  const totals = new Map<Category, number>()
+  const add = (c: Category, ms: number) => totals.set(c, (totals.get(c) ?? 0) + ms)
+  let browserMs = 0
+  for (const a of clip(apps, range)) {
+    const c = appCategory(a.process)
+    if (c === 'Browsing') browserMs += a.ms
+    else add(c, a.ms)
+  }
+  const siteRows = clip(web, range)
+  for (const w of siteRows) add(siteCategory(w.domain), w.ms)
+  add('Browsing', Math.max(0, browserMs - siteRows.reduce((s, w) => s + w.ms, 0)))
+  return [...totals].map(([key, ms]) => ({ key, ms })).filter((c) => c.ms > 0).sort((a, b) => b.ms - a.ms)
+}

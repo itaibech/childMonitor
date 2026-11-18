@@ -11,7 +11,7 @@ const ADMIN = 'itai.bechor@gmail.com'
 
 export type Route =
   | { page: 'home' }
-  | { page: 'child'; id: string; date: string | null }
+  | { page: 'child'; id: string; date: string | null; week: boolean }
   | { page: 'settings' }
   | { page: 'download' }
   | { page: 'diagnose' }
@@ -23,7 +23,8 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'download') return { page: 'download' }
   if (parts[0] === 'diagnose') return { page: 'diagnose' }
   if (parts[0] === 'child' && parts[1]) {
-    return { page: 'child', id: parts[1], date: new URLSearchParams(query).get('date') }
+    const q = new URLSearchParams(query)
+    return { page: 'child', id: parts[1], date: q.get('date'), week: q.get('view') === 'week' }
   }
   return { page: 'home' }
 }
@@ -68,7 +69,7 @@ function Page({ route }: { route: Route }) {
   if (route.page === 'settings') return <Settings />
   if (route.page === 'download') return <Download />
   if (route.page === 'diagnose') return <Diagnose />
-  if (route.page === 'child') return <ChildDay id={route.id} date={route.date} />
+  if (route.page === 'child') return <ChildDay id={route.id} date={route.date} week={route.week} />
   return <Home />
 }
 

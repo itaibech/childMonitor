@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deviceStatus } from './health.ts'
+import { deviceStatus, summarizeReport } from './health.ts'
 import type { Device, DeviceEvent } from './types.ts'
 
 const now = new Date('2026-11-18T12:00:00Z')
@@ -27,5 +27,24 @@ describe('deviceStatus', () => {
   })
   it('is silent when never seen', () => {
     expect(deviceStatus(device(null), undefined, now)).toBe('silent')
+  })
+})
+
+describe('summarizeReport', () => {
+  const good = [
+    '== Service', 'Status    : Running', '== Helper', '13688  1 PC\\Emma 11/18/2026', '== Build date', 'x',
+    '== Server check (answer only, never the code)', '{"ok":true,"accepted":0}',
+    '== Smart App Control (0 off, 1 on, 2 evaluation)', '0', '== Network', 'TcpTestSucceeded : True',
+  ].join('\n')
+  it('marks a healthy laptop all green', () => {
+    expect(summarizeReport(good).map((c) => c.ok)).toEqual([true, true, true, true, true])
+  })
+  it('flags an invalid code, Smart App Control and a stopped service', () => {
+    const bad = good.replace('Running', 'Stopped').replace('{"ok":true,"accepted":0}', 'failed: invalid token').replace(/\n0\n/, '\n1\n')
+    const byLabel = Object.fromEntries(summarizeReport(bad).map((c) => [c.label, c.ok]))
+    expect(byLabel).toMatchObject({ 'Service running': false, 'Install code accepted': false, 'Smart App Control off': false })
+  })
+  it('leaves checks unknown when an older report lacks the section', () => {
+    expect(summarizeReport('== Service\nStatus : Running').find((c) => c.label === 'Install code accepted')?.ok).toBeNull()
   })
 })
