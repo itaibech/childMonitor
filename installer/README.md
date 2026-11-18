@@ -4,12 +4,13 @@ Windows PowerShell 5.1+, run from an elevated prompt.
 
 ```powershell
 .\build.ps1                                   # publishes Service + Helper into installer\out (needs .NET 8 SDK)
-.\install.ps1 -Token <64 hex> [-ChromeExtId <32 chars a-p>] [-EdgeExtId <32 chars a-p>]
+.\install.ps1 -Token <64 hex> -ChromeExtId <32 chars a-p> -EdgeExtId <32 chars a-p>
 .\uninstall.ps1
 ```
 
-`install.ps1` is idempotent (re-run to upgrade). Without an extension id the browser is not given the force-install
-policy and is not allowed in the native host manifest; a warning is printed.
+`install.ps1` is idempotent (re-run to upgrade). Both extension ids are required: they are force-installed by policy
+and are the only origins allowed in the native host manifest (the dashboard's install command fills them in from
+`web/src/extensionIds.ts`).
 
 Installed: `C:\Program Files\ChildMonitor` (`ChildMonitorService.exe`, `Helper.exe`, `NativeHost.cmd`, `native-host.json`),
 `C:\ProgramData\ChildMonitor\config.json` (SYSTEM + Administrators only), service `ChildMonitorSvc`, Chrome/Edge policies,
@@ -27,7 +28,10 @@ Run `install.ps1` as admin with a token from the dashboard, then:
 - `Stop-Process -Name Helper` (as testkid session) -> Helper is back within 30 s.
 - `nslookup pornhub.com` returns `0.0.0.0`.
 - Launching a portable Firefox closes immediately and a `browser_blocked` row appears in the dashboard.
-- `chrome://policy` (and `edge://policy`) list the policies.
+- `chrome://policy` (and `edge://policy`) list the policies, including `BrowserGuestModeEnabled = 0` (no Guest profile in the profile menu).
+- As testkid, visit a site in Chrome and use an app (e.g. Notepad) for a minute: within 2 minutes both the site visit and
+  the app session appear in the dashboard for testkid. This proves the pipe impersonation identifies the client even
+  though the Helper/native host closes its connection right after writing.
 - Settings lists testkid (supervised) and the admin account (admin badge, not supervised); admin activity is absent.
 - Turn on the admin account's switch -> within ~2 min its activity appears and Firefox is killed for it too.
 - Turn testkid off -> its activity stops within ~2 min.

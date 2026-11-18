@@ -4,15 +4,21 @@
   Installs the Child Monitor agent on this laptop. Idempotent: safe to re-run to upgrade.
 .PARAMETER Token
   64-hex-char pairing token from the dashboard.
+.PARAMETER ChromeExtId
+  Chrome Web Store ID of the Child Monitor extension (32 chars a-p). Required: it is force-installed by policy.
+.PARAMETER EdgeExtId
+  Edge Add-ons ID of the Child Monitor extension (32 chars a-p). Required: it is force-installed by policy.
 #>
 param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[0-9a-fA-F]{64}$')]
     [string]$Token,
+    [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-p]{32}$')]
-    [string]$ChromeExtId = '',
+    [string]$ChromeExtId,
+    [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-p]{32}$')]
-    [string]$EdgeExtId = ''
+    [string]$EdgeExtId
 )
 
 Set-StrictMode -Version Latest
@@ -149,10 +155,11 @@ function Set-BrowserPolicy([string]$Root, [string]$ExtId, [string]$UpdateUrl, [h
 
 function Set-MachinePolicies {
     Set-BrowserPolicy 'HKLM:\SOFTWARE\Policies\Google\Chrome' $ChromeExtId $ChromeUpdateUrl @{
-        IncognitoModeAvailability = 1; ForceGoogleSafeSearch = 1; ForceYouTubeRestrict = 1
+        IncognitoModeAvailability = 1; BrowserGuestModeEnabled = 0; ForceGoogleSafeSearch = 1; ForceYouTubeRestrict = 1
     }
     Set-BrowserPolicy 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' $EdgeExtId $EdgeUpdateUrl @{
-        InPrivateModeAvailability = 1; ForceBingSafeSearch = 2; ForceGoogleSafeSearch = 1; ForceYouTubeRestrict = 1
+        InPrivateModeAvailability = 1; BrowserGuestModeEnabled = 0; ForceBingSafeSearch = 2; ForceGoogleSafeSearch = 1
+        ForceYouTubeRestrict = 1
     }
 }
 
@@ -169,12 +176,6 @@ function Add-DefenderExclusion {
     catch { Write-Warning "Could not add Defender exclusion (is another antivirus active?): $_" }
 }
 
-function Show-Warnings {
-    if (-not $ChromeExtId) { Write-Warning 'ChromeExtId not provided: Chrome extension is NOT force-installed and not allowed by the native host.' }
-    if (-not $EdgeExtId) { Write-Warning 'EdgeExtId not provided: Edge extension is NOT force-installed and not allowed by the native host.' }
-}
-
-Show-Warnings
 Stop-AgentIfRunning
 Add-DefenderExclusion
 Copy-AgentFiles

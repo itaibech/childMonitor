@@ -46,7 +46,7 @@ function Remove-Forcelist([string]$Root, [string]$ExtId) {
 }
 
 function Remove-MachinePolicies {
-    $common = 'ForceGoogleSafeSearch', 'ForceYouTubeRestrict', 'DnsOverHttpsMode'
+    $common = 'ForceGoogleSafeSearch', 'ForceYouTubeRestrict', 'DnsOverHttpsMode', 'BrowserGuestModeEnabled'
     foreach ($n in ($common + 'IncognitoModeAvailability')) { Remove-PolicyValue $ChromeRoot $n }
     foreach ($n in ($common + 'InPrivateModeAvailability', 'ForceBingSafeSearch')) { Remove-PolicyValue $EdgeRoot $n }
     Remove-Forcelist $ChromeRoot (Get-RecordedId 'ChromeExtId')
