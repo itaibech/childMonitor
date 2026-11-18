@@ -114,6 +114,7 @@ Tables (all with RLS: `select` only for `is_admin()`; no direct inserts from `an
 
 - `children` (id, name, color)
 - `devices` (id, child_id, name, token_hash, created_at, last_seen_at, agent_version)
+- `device_users` (device_id, sid, win_user, is_admin, supervised, first_seen_at) — every Windows account the agent finds on the laptop
 - `app_sessions` (id, device_id, win_user, process, exe_path, title, started_at, ended_at)
 - `web_sessions` (id, device_id, win_user, browser, url, domain, title, started_at, ended_at)
 - `device_events` (id, device_id, win_user, kind [logon|logoff|lock|unlock|idle|active|heartbeat|agent_start|shutdown|suspend|resume|browser_blocked], detail jsonb, at)
@@ -129,7 +130,7 @@ Retention: raw sessions kept 90 days (scheduled `pg_cron` delete if available on
 - Google login; non-admin sees "no access".
 - **Home:** one card per child — today's screen time, top 3 apps, top 3 sites, "last seen" (red if a laptop hasn't reported in > 30 min while it should be on, i.e. no heartbeat).
 - **Child page:** date picker; screen time by hour (bar chart); time per app; time per domain; timeline list (app/site sessions in order); filter by Windows account.
-- **Settings:** children, devices (add/pair/revoke).
+- **Settings:** children, devices (add/pair/revoke), and per laptop the list of Windows accounts with a **Supervised** on/off switch each (admin accounts marked "admin").
 - Times shown in Asia/Jerusalem.
 
 ## Phases
@@ -150,9 +151,10 @@ Retention: raw sessions kept 90 days (scheduled `pg_cron` delete if available on
 - **Other browsers: kill in phase 1.** Service watches process starts (WMI `Win32_ProcessStartTrace`) and kills any known browser that isn't Chrome/Edge (by exe name + file description: firefox, brave, opera, vivaldi, tor, etc.), logs a `browser_blocked` event shown in the dashboard. List is editable later (phase 3 blocklist).
 - **Testing:** a spare Windows PC is available — build and test there first, then install on the kids' laptops.
 
+- **Per-account supervision (Itai, 2026-11-18):** the super admin (Itai, the dashboard's Google admin) turns supervision on/off per Windows account per laptop, **including admin accounts**. The agent reports every local account (SID, name, is-admin) to `device_users`. Default for a newly found account: supervised if standard, not supervised if admin; Itai can flip either. Unsupervised accounts get no Helper and no browser killing. The supervised list comes back in each `ingest` response and is cached on disk, so it applies offline. Machine-wide protections (family DNS, browser policies, force-installed extension) stay on for every account — they can't be scoped per user cheaply. Note: a child who is a Windows admin can stop the service; supervising an admin account monitors it but can't make it tamper-proof.
+
 ## Builder's calls (from review, Itai can override)
 
-- **Admin accounts excluded:** sessions of accounts in the local Administrators group are not tracked (Itai's maintenance doesn't count as child time).
 - **"Last seen" rule:** service also reports `shutdown`, `suspend`, `resume` in `device_events`. Dashboard turns red only when there's no heartbeat for 30 min *and* the last event wasn't a clean shutdown/suspend.
 - **No code-signing certificate** in phase 1; `install.ps1` adds a Defender exclusion for `C:\Program Files\ChildMonitor`. Revisit with the MSI in phase 4.
 
