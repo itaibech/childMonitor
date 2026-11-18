@@ -30,7 +30,7 @@ public sealed class ForegroundTracker
 
         if (changed)
         {
-            rows.Add(ToRow(_open!, nowUtc));
+            rows.Add(ToRow(_open!, EndFor(_open!, s, nowUtc)));
             _open = null;
         }
         if (active && _open is null)
@@ -41,6 +41,14 @@ public sealed class ForegroundTracker
             _open = _open with { LastEmit = nowUtc };
         }
         return rows;
+    }
+
+    // Idle time is not usage: end at the last input. Locked/other closes end now.
+    private static DateTimeOffset EndFor(Open o, Sample s, DateTimeOffset now)
+    {
+        if (s.Locked || s.Idle < IdleThreshold) return now;
+        var lastInput = now - s.Idle;
+        return lastInput > o.StartedAt ? lastInput : o.StartedAt;
     }
 
     private AppRow ToRow(Open o, DateTimeOffset end) =>

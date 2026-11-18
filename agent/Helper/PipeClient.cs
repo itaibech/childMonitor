@@ -66,7 +66,7 @@ internal sealed class PipeClient : IDisposable
             w.Flush();
             return true;
         }
-        catch (Exception e) when (e is IOException or TimeoutException or UnauthorizedAccessException)
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             return false;
         }

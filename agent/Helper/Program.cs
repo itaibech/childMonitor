@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Core;
 
 namespace Helper;
@@ -22,12 +21,17 @@ internal static class Program
     {
         var winUser = Environment.UserDomainName + "\\" + Environment.UserName;
         var tracker = new ForegroundTracker(winUser, Guid.NewGuid);
-        pipe.Send(PipeLine.Event(new EventRow(Guid.NewGuid().ToString(), winUser, "logon",
-            JsonSerializer.SerializeToElement(new { }), DateTimeOffset.UtcNow)));
         while (true)
         {
-            foreach (var row in tracker.Observe(Win32.Capture(), DateTimeOffset.UtcNow))
-                pipe.Send(PipeLine.App(row));
+            try
+            {
+                foreach (var row in tracker.Observe(Win32.Capture(), DateTimeOffset.UtcNow))
+                    pipe.Send(PipeLine.App(row));
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Treat as a failed sample; keep tracking.
+            }
             Thread.Sleep(Poll);
         }
     }

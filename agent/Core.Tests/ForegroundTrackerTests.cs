@@ -44,9 +44,19 @@ public sealed class ForegroundTrackerTests
         t.Observe(S("a.exe"), T0);
         var rows = t.Observe(S("a.exe", idle: 121), T0.AddSeconds(5)).ToList();
         Assert.Single(rows);
-        Assert.Equal(T0.AddSeconds(5), rows[0].EndedAt);
+        Assert.Equal(T0, rows[0].EndedAt);
         Assert.Empty(t.Observe(S("a.exe", idle: 130), T0.AddSeconds(10)));
         Assert.Empty(t.Observe(S("a.exe", idle: 200), T0.AddSeconds(70)));
+    }
+
+    [Fact]
+    public void idle_close_ends_at_last_input()
+    {
+        var t = NewTracker();
+        t.Observe(S("a.exe"), T0);
+        t.Observe(S("a.exe"), T0.AddSeconds(60));
+        var row = t.Observe(S("a.exe", idle: 121), T0.AddSeconds(200)).Single();
+        Assert.Equal(T0.AddSeconds(79), row.EndedAt);
     }
 
     [Fact]
