@@ -99,10 +99,11 @@ const DIAGNOSE = String.raw`& {
 '== Helper'; Get-Process Helper -IncludeUserName -ErrorAction SilentlyContinue | Format-Table Id,SessionId,UserName,StartTime
 '== Service manager'; Get-WinEvent -LogName System -MaxEvents 400 | Where-Object { $_.ProviderName -eq 'Service Control Manager' -and $_.Message -like '*Child Monitor*' } | Select-Object -First 10 | Format-List TimeCreated,Message
 '== App errors'; Get-WinEvent -LogName Application -MaxEvents 400 | Where-Object { $_.ProviderName -in 'ChildMonitorSvc','.NET Runtime','Application Error' } | Select-Object -First 15 | Format-List TimeCreated,ProviderName,Message
+'== Smart App Control (0 off, 1 on, 2 evaluation)'; (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState
 '== Network'; Test-NetConnection hyeslwlewvvjiyizoduf.supabase.co -Port 443 | Format-List TcpTestSucceeded,RemoteAddress
 '== Foreground run'; if ((Get-Service ChildMonitorSvc -ErrorAction SilentlyContinue).Status -ne 'Running') {
   $p = Start-Process 'C:\Program Files\ChildMonitor\ChildMonitorService.exe' -PassThru -WindowStyle Hidden -RedirectStandardError "$env:TEMP\cm-err.txt" -RedirectStandardOutput "$env:TEMP\cm-out.txt"
-  Start-Sleep 10; if ($p.HasExited) { "exited with code $($p.ExitCode)" } else { Stop-Process $p -Force; 'still running after 10 s' }
+  Start-Sleep 10; if (-not $p) { 'could not start' } elseif ($p.HasExited) { "exited with code $($p.ExitCode)" } else { Stop-Process $p -Force; 'still running after 10 s' }
   Get-Content "$env:TEMP\cm-err.txt","$env:TEMP\cm-out.txt" -ErrorAction SilentlyContinue } else { 'skipped: service is running' }
 } *>&1 | Out-String -Width 200 | Set-Clipboard; 'Copied. Paste it on the Diagnostics page.'`
 
