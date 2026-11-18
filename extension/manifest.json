@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Child Monitor",
+  "version": "0.1.0",
+  "description": "Parental monitoring: reports the active tab to the local Child Monitor service.",
+  "minimum_chrome_version": "110",
+  "permissions": ["tabs", "webNavigation", "nativeMessaging", "idle", "alarms", "storage"],
+  "background": { "service_worker": "background.js", "type": "module" }
+}
