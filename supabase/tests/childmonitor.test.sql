@@ -1,15 +1,20 @@
 begin;
-select plan(25);
+select plan(30);
 
 -- as admin
 set local test.admin = 'on';
 insert into childmonitor.children(id,name,color) values ('00000000-0000-0000-0000-000000000001','Noa','#e66');
 select lives_ok($$ select set_config('t.tok', childmonitor.create_device('00000000-0000-0000-0000-000000000001','Noa laptop'), true) $$, 'admin can create device');
 
--- as anon
+-- non-admin authenticated user is refused by the function itself
 set local test.admin = 'off';
-set local role anon;
+set local role authenticated;
 select throws_ok($$ select childmonitor.create_device('00000000-0000-0000-0000-000000000001','x') $$, 'forbidden');
+reset role;
+
+-- as anon: no execute permission at all
+set local role anon;
+select throws_ok($$ select childmonitor.create_device('00000000-0000-0000-0000-000000000001','x') $$, '42501', null, 'anon cannot call create_device');
 select throws_ok($$ select childmonitor.ingest('nope','{}'::jsonb) $$, 'invalid token');
 select is((childmonitor.ingest(current_setting('t.tok'), '{"agent_version":"0.1.0","app_sessions":[{"id":"10000000-0000-0000-0000-000000000001","win_user":"PC\\noa","process":"a.exe","exe_path":"C:\\a.exe","title":"A","started_at":"2026-11-18T10:00:00Z","ended_at":"2026-11-18T10:01:00Z"}]}'::jsonb))->>'accepted', '1', 'ingest accepts a row');
 -- ingest is idempotent and extends ended_at
@@ -57,6 +62,35 @@ select is((select ended_at from childmonitor.app_sessions), '2026-11-18T10:09:00
 select is((select length(title) from childmonitor.app_sessions), 2, 'title updated');
 select isnt((select last_seen_at from childmonitor.devices), null, 'last_seen_at set');
 select is((select length(title)::text || ' ' || domain from childmonitor.web_sessions), '300 www.youtube.com', 'web title truncated, domain derived');
+
+-- retention: at most once per hour, for ALL devices (not only the ingesting one)
+insert into childmonitor.devices(id, child_id, name, token_hash)
+values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-000000000001', 'other laptop', 'h-other');
+insert into childmonitor.app_sessions(id, device_id, started_at, ended_at)
+values ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000d2', now() - interval '91 days', now() - interval '91 days');
+insert into childmonitor.device_events(id, device_id, kind, at)
+values ('30000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000d2', 'heartbeat', now() - interval '91 days');
+update childmonitor.meta set value = now() - interval '2 hours' where key = 'retention_at';
+set local role anon;
+select childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb);
+reset role;
+select is((select count(*)::int from childmonitor.app_sessions where device_id = '00000000-0000-0000-0000-0000000000d2')
+        + (select count(*)::int from childmonitor.device_events where device_id = '00000000-0000-0000-0000-0000000000d2'),
+          0, 'retention deletes old rows of other devices');
+insert into childmonitor.app_sessions(id, device_id, started_at, ended_at)
+values ('30000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-0000000000d2', now() - interval '91 days', now() - interval '91 days');
+set local role anon;
+select childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb);
+reset role;
+select is((select count(*)::int from childmonitor.app_sessions where id = '30000000-0000-0000-0000-000000000003'), 1,
+          'retention runs at most once per hour');
+update childmonitor.meta set value = now() - interval '61 minutes' where key = 'retention_at';
+set local role anon;
+select childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb);
+select throws_ok($$ select * from childmonitor.meta $$, '42501', null, 'anon cannot read meta');
+reset role;
+select is((select count(*)::int from childmonitor.app_sessions where id = '30000000-0000-0000-0000-000000000003'), 0,
+          'retention runs again after an hour');
 
 select * from finish();
 rollback;

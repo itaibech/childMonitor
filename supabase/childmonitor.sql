@@ -66,6 +66,13 @@ create table if not exists childmonitor.device_users (
 );
 
 -- RLS: admin only; anon never touches tables (devices go through ingest)
+-- Internal bookkeeping (e.g. last retention run). RLS on, no policies: only security definer code touches it.
+create table if not exists childmonitor.meta (
+  key text primary key,
+  value timestamptz
+);
+
+alter table childmonitor.meta enable row level security;
 alter table childmonitor.children enable row level security;
 alter table childmonitor.devices enable row level security;
 alter table childmonitor.app_sessions enable row level security;
@@ -152,6 +159,21 @@ begin
   return n;
 end $$;
 
+-- 90-day retention for ALL devices, at most once per hour (claimed atomically via childmonitor.meta)
+create or replace function childmonitor.apply_retention()
+returns void language plpgsql security definer set search_path = '' as $$
+declare claimed int;
+begin
+  insert into childmonitor.meta(key, value) values ('retention_at', now())
+  on conflict (key) do update set value = excluded.value
+   where childmonitor.meta.value is null or childmonitor.meta.value <= now() - interval '1 hour';
+  get diagnostics claimed = row_count;
+  if claimed = 0 then return; end if;
+  delete from childmonitor.app_sessions where started_at < now() - interval '90 days';
+  delete from childmonitor.web_sessions where started_at < now() - interval '90 days';
+  delete from childmonitor.device_events where at < now() - interval '90 days';
+end $$;
+
 create or replace function childmonitor.ingest(token text, batch jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare dev uuid; n int; sids jsonb;
@@ -173,9 +195,7 @@ begin
      set last_seen_at = now(), agent_version = coalesce(batch->>'agent_version', agent_version)
    where id = dev;
 
-  delete from childmonitor.app_sessions where device_id = dev and started_at < now() - interval '90 days';
-  delete from childmonitor.web_sessions where device_id = dev and started_at < now() - interval '90 days';
-  delete from childmonitor.device_events where device_id = dev and at < now() - interval '90 days';
+  perform childmonitor.apply_retention();
 
   select coalesce(jsonb_agg(sid order by sid), '[]'::jsonb) into sids
     from childmonitor.device_users where device_id = dev and supervised;
@@ -183,9 +203,10 @@ begin
 end $$;
 
 revoke all on function childmonitor.ingest_sessions(uuid, jsonb) from public, anon, authenticated;
+revoke all on function childmonitor.apply_retention() from public, anon, authenticated;
 revoke all on function childmonitor.ingest(text, jsonb) from public;
-revoke all on function childmonitor.create_device(uuid, text) from public;
+revoke all on function childmonitor.create_device(uuid, text) from public, anon;
 revoke all on function childmonitor.reset_device_token(uuid) from public;
 grant execute on function childmonitor.ingest(text, jsonb) to anon, authenticated;
-grant execute on function childmonitor.create_device(uuid, text) to authenticated, anon;
+grant execute on function childmonitor.create_device(uuid, text) to authenticated;
 grant execute on function childmonitor.reset_device_token(uuid) to authenticated;
