@@ -20,6 +20,8 @@ public sealed class Queue
     {
         var c = new SqliteConnection(_connStr);
         c.Open();
+        Exec(c, "PRAGMA journal_mode=WAL;");
+        Exec(c, "PRAGMA busy_timeout=5000;");
         return c;
     }
 
@@ -51,11 +53,13 @@ public sealed class Queue
         return list;
     }
 
-    public void Delete(IEnumerable<long> seq)
+    /// <summary>Deletes rows only if unchanged since read, so a re-upserted newer version survives.</summary>
+    public void Delete(IEnumerable<QueuedRow> rows)
     {
         using var c = Open();
         using var tx = c.BeginTransaction();
-        foreach (var s in seq) Exec(c, "delete from queue where seq = $s", ("$s", s));
+        foreach (var r in rows)
+            Exec(c, "delete from queue where seq = $s and json = $j", ("$s", r.Seq), ("$j", r.Json));
         tx.Commit();
     }
 }

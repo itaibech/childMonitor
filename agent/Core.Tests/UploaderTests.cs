@@ -165,4 +165,79 @@ public sealed class UploaderTests : IDisposable
         Assert.Single(h.Calls);
         Assert.Equal(10, q.Oldest(100).Count);
     }
+
+    [Fact]
+    public async Task Row_upserted_while_in_flight_survives_ack()
+    {
+        Queue? qq = null;
+        var (up, q, _, _) = Make((_, _, _) =>
+        {
+            qq!.Upsert("app", "a1", "{\"id\":\"a1\",\"v\":2}");
+            return (HttpStatusCode.OK, Ok);
+        });
+        qq = q;
+        q.Upsert("app", "a1", "{\"id\":\"a1\",\"v\":1}");
+        await up.FlushAsync(CancellationToken.None);
+        var left = q.Oldest(10);
+        Assert.Single(left);
+        Assert.Equal("{\"id\":\"a1\",\"v\":2}", left[0].Json);
+    }
+
+    [Fact]
+    public async Task Corrupt_row_is_dropped_and_good_row_sent()
+    {
+        var (up, q, h, _) = Make((_, _, _) => (HttpStatusCode.OK, Ok));
+        q.Upsert("app", "bad", "{not json");
+        q.Upsert("app", "good", "{\"id\":\"good\"}");
+        Assert.Equal(1, await up.FlushAsync(CancellationToken.None));
+        Assert.Equal(1, Count(h.Calls[0].Body));
+        Assert.Empty(q.Oldest(10));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[1]")]
+    [InlineData("{\"supervised_sids\":[1,null]}")]
+    public async Task Odd_success_body_still_acks_rows(string body)
+    {
+        var (up, q, _, _) = Make((_, _, _) => (HttpStatusCode.OK, body));
+        Fill(q, 3);
+        Assert.Equal(3, await up.FlushAsync(CancellationToken.None));
+        Assert.Empty(q.Oldest(10));
+    }
+
+    [Fact]
+    public async Task Supervision_save_failure_still_acks_rows()
+    {
+        var q = new Queue(Path.Combine(_dir, "q.db"));
+        var h = new FakeHandler((_, _, _) => (HttpStatusCode.OK, "{\"supervised_sids\":[\"S-1\"]}"));
+        var blocker = Path.Combine(_dir, "file");
+        File.WriteAllText(blocker, "x");
+        var up = new Uploader(q, new HttpClient(h), _cfg, new SupervisionStore(Path.Combine(blocker, "s.json")));
+        Fill(q, 2);
+        Assert.Equal(2, await up.FlushAsync(CancellationToken.None));
+        Assert.Empty(q.Oldest(10));
+    }
+
+    [Fact]
+    public async Task Not_found_keeps_rows_and_stops()
+    {
+        var (up, q, h, _) = Make((_, _, _) => (HttpStatusCode.NotFound, "{\"message\":\"no function\"}"));
+        Fill(q, 600);
+        Assert.Equal(0, await up.FlushAsync(CancellationToken.None));
+        Assert.Single(h.Calls);
+        Assert.Equal(600, q.Oldest(1000).Count);
+    }
+
+    [Fact]
+    public void Wire_writes_snake_case_and_utc_timestamps()
+    {
+        var t = new DateTimeOffset(2026, 11, 18, 17, 0, 0, TimeSpan.FromHours(2));
+        var json = JsonSerializer.Serialize(new AppRow("i", "u", "p.exe", "C:\\p.exe", "t", t, t), Wire.Options);
+        var root = JsonDocument.Parse(json).RootElement;
+        Assert.Equal("2026-11-18T15:00:00Z", root.GetProperty("started_at").GetString());
+        Assert.Equal("p.exe", root.GetProperty("process").GetString());
+        Assert.True(root.TryGetProperty("exe_path", out _));
+        Assert.True(root.TryGetProperty("win_user", out _));
+    }
 }

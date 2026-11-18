@@ -39,7 +39,7 @@ public sealed class QueueTests : IDisposable
         var q = NewQueue();
         q.Upsert("app", "a", "1");
         q.Upsert("web", "b", "2");
-        q.Delete(new[] { q.Oldest(1)[0].Seq });
+        q.Delete(new[] { q.Oldest(1)[0] });
         var left = NewQueue().Oldest(10);
         Assert.Single(left);
         Assert.Equal("web", left[0].Type);

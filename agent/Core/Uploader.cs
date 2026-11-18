@@ -24,15 +24,38 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
         var sent = 0;
         for (var first = true; ; first = false)
         {
-            var rows = q.Oldest(BatchSize);
-            if (rows.Count == 0 && !first) break;
+            var all = q.Oldest(BatchSize);
+            if (all.Count == 0 && !first) break;
+            var rows = DropCorrupt(all);
             var outcome = await PostAsync(rows, ct);
             if (outcome == Outcome.Stop) break;
-            if (rows.Count > 0) q.Delete(rows.Select(r => r.Seq));
+            if (rows.Count > 0) q.Delete(rows);
             if (outcome == Outcome.Ok) sent += rows.Count;
-            if (rows.Count < BatchSize) break;
+            if (all.Count < BatchSize) break;
         }
         return sent;
+    }
+
+    private List<QueuedRow> DropCorrupt(IReadOnlyList<QueuedRow> rows)
+    {
+        var good = new List<QueuedRow>();
+        var bad = new List<QueuedRow>();
+        foreach (var r in rows) (IsValidJson(r.Json) ? good : bad).Add(r);
+        if (bad.Count > 0) q.Delete(bad);
+        return good;
+    }
+
+    private static bool IsValidJson(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private async Task<Outcome> PostAsync(IReadOnlyList<QueuedRow> rows, CancellationToken ct)
@@ -70,10 +93,11 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
         try
         {
             var doc = await res.Content.ReadFromJsonAsync<JsonElement>(ct);
-            if (doc.TryGetProperty("supervised_sids", out var sids) && sids.ValueKind == JsonValueKind.Array)
+            if (doc.ValueKind == JsonValueKind.Object
+                && doc.TryGetProperty("supervised_sids", out var sids) && sids.ValueKind == JsonValueKind.Array)
                 _supervision.Save(sids.EnumerateArray().Select(s => s.GetString()).OfType<string>());
         }
-        catch (JsonException)
+        catch (Exception e) when (e is JsonException or InvalidOperationException or IOException)
         {
             // Body is advisory; the rows were accepted.
         }
@@ -84,7 +108,7 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
     {
         var code = (int)res.StatusCode;
         if (code < 400 || code >= 500) return Outcome.Stop;
-        if (res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+        if (res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.NotFound
             or HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests) return Outcome.Stop;
         var text = await res.Content.ReadAsStringAsync(ct);
         return text.Contains(InvalidToken, StringComparison.OrdinalIgnoreCase) ? Outcome.Stop : Outcome.Poison;
