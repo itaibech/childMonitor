@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as data from './data.ts'
+import { CHROME_EXT_ID, EDGE_EXT_ID } from './extensionIds.ts'
 import type { Child, Device, DeviceUser } from './types.ts'
 
 function useAsync<T>(fn: () => Promise<T>): { value: T | null; error: string | null; reload: () => void } {
@@ -14,10 +15,13 @@ function useAsync<T>(fn: () => Promise<T>): { value: T | null; error: string | n
 }
 
 function ShowToken({ token }: { token: string }) {
+  const chrome = CHROME_EXT_ID || '<CHROME_EXT_ID>'
+  const edge = EDGE_EXT_ID || '<EDGE_EXT_ID>'
   return (
     <div className="token" role="status">
       <p>Run on the laptop as administrator:</p>
-      <code>{`powershell -ExecutionPolicy Bypass -File install.ps1 -Token ${token}`}</code>
+      <code>{`powershell -ExecutionPolicy Bypass -File install.ps1 -Token ${token} -ChromeExtId ${chrome} -EdgeExtId ${edge}`}</code>
+      {(!CHROME_EXT_ID || !EDGE_EXT_ID) && <p role="alert">Extension IDs not set yet — web tracking won't install</p>}
       <p className="muted">This token is shown only once. Copy it now.</p>
     </div>
   )
@@ -127,7 +131,7 @@ export function Settings() {
   if (error) return <p role="alert">Could not load data: {error}</p>
   if (!kids.value || !devs.value) return <p>Loading…</p>
   const reload = () => { kids.reload(); devs.reload() }
-  const nameOf = (id: string | null) => kids.value?.find((c) => c.id === id)?.name ?? 'unassigned'
+  const nameOf = (id: string) => kids.value?.find((c) => c.id === id)?.name ?? 'unassigned'
   return (
     <div>
       <h2>Settings</h2>

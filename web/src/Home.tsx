@@ -55,7 +55,7 @@ function ChildCard({ child, data }: { child: Child; data: HomeData }) {
   const web = data.day.web.filter((w) => ids.has(w.device_id))
   const status = childStatus(devs, data.last)
   return (
-    <li className="card" style={{ '--c': child.color } as CSSProperties}>
+    <li className="card" style={{ '--c': child.color ?? undefined } as CSSProperties}>
       <h3><a href={`#/child/${child.id}`}>{child.name}</a></h3>
       <p className="screen-time">{fmtDuration(screenTimeMs(apps, range))} today</p>
       <p><span className={`dot dot-${status}`} aria-label={`status ${status}`} /> last seen {lastSeen(devs)}</p>

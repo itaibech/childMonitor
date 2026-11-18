@@ -1,12 +1,12 @@
 export interface Child {
   id: string
   name: string
-  color: string
+  color: string | null
 }
 
 export interface Device {
   id: string
-  child_id: string | null
+  child_id: string
   name: string
   created_at: string
   last_seen_at: string | null

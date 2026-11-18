@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchChildren, fetchDay, fetchDevices } from './data.ts'
 import type { DayData } from './data.ts'
-import type { Child } from './types.ts'
+import type { Child, DeviceEvent } from './types.ts'
 import { byHour, clip, dayRange, fmtDuration, fmtTime, screenTimeMs, topBy, validDate } from './usage.ts'
 import type { Range } from './usage.ts'
 
@@ -30,10 +30,15 @@ function filterUser(day: DayData, user: string): DayData {
   return { apps: keep(day.apps), web: keep(day.web), events: keep(day.events) }
 }
 
+function eventLabel(e: DeviceEvent): string {
+  const exe = e.detail?.exe
+  return e.kind === 'browser_blocked' && typeof exe === 'string' ? `${e.kind} ${exe}` : e.kind
+}
+
 function timeline(day: DayData): Entry[] {
   const apps = day.apps.map((a): Entry => ({ at: a.started_at, kind: 'app', label: `${a.process} ${a.title}`, user: a.win_user, blocked: false }))
   const sites = day.web.map((w): Entry => ({ at: w.started_at, kind: 'site', label: `${w.domain} ${w.title}`, user: w.win_user, blocked: false }))
-  const events = day.events.map((e): Entry => ({ at: e.at, kind: 'event', label: e.kind, user: e.win_user, blocked: e.kind === 'browser_blocked' }))
+  const events = day.events.filter((e) => e.kind !== 'heartbeat').map((e): Entry => ({ at: e.at, kind: 'event', label: eventLabel(e), user: e.win_user, blocked: e.kind === 'browser_blocked' }))
   return [...apps, ...sites, ...events].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
 }
 
@@ -130,7 +135,7 @@ export function ChildDay({ id, date }: { id: string; date: string | null }) {
   if (!loaded) return <p>Loading…</p>
   if (!loaded.child) return <p role="alert">Child not found</p>
   const all = loaded.day
-  const users = [...new Set([...all.apps, ...all.web, ...all.events].map((r) => r.win_user))].sort()
+  const users = [...new Set([...all.apps, ...all.web, ...all.events].map((r) => r.win_user))].filter((u) => u !== '').sort()
   return (
     <div>
       <h2>{loaded.child.name}</h2>

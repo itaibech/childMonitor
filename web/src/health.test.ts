@@ -19,6 +19,9 @@ describe('deviceStatus', () => {
   it('is off after a clean shutdown', () => {
     expect(deviceStatus(device(ago(120)), event('shutdown'), now)).toBe('off')
   })
+  it.each(['suspend', 'logoff', 'lock'])('is off after a clean %s', (kind) => {
+    expect(deviceStatus(device(ago(120)), event(kind), now)).toBe('off')
+  })
   it('is silent when last event was a heartbeat', () => {
     expect(deviceStatus(device(ago(120)), event('heartbeat'), now)).toBe('silent')
   })
