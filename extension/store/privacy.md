@@ -7,6 +7,7 @@ Child Monitor is a private parental-monitoring tool used within one family on de
 - The URL of the active browser tab.
 - The title of that page.
 - Timestamps (start and end of time spent on the tab).
+- The browser name (Chrome or Edge) and the Windows account name of the person using the PC (added by the Child Monitor program on the PC) are attached to each record.
 
 Page content, form input, passwords, cookies and browsing in non-supervised Windows accounts are not collected.
 
