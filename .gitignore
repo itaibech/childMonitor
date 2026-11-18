@@ -1,3 +1,5 @@
 .superpowers/
 web/node_modules
 web/dist
+agent/**/bin
+agent/**/obj
