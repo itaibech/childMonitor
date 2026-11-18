@@ -94,7 +94,7 @@ const DIAGNOSE = String.raw`& {
 '== Service'; Get-Service ChildMonitorSvc -ErrorAction SilentlyContinue | Format-List Name,Status,StartType
 '== Program files'; Get-ChildItem 'C:\Program Files\ChildMonitor' -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count
 '== Data'; Get-ChildItem C:\ProgramData\ChildMonitor -ErrorAction SilentlyContinue | Format-Table Name,Length,LastWriteTime
-'== Supervised accounts'; Get-Content C:\\ProgramData\\ChildMonitor\\supervised.json -ErrorAction SilentlyContinue; Get-CimInstance Win32_UserAccount -Filter 'LocalAccount=True' | Format-Table Name,SID,Disabled
+'== Supervised accounts'; Get-Content C:\ProgramData\ChildMonitor\supervised.json -ErrorAction SilentlyContinue; Get-CimInstance Win32_UserAccount -Filter 'LocalAccount=True' | Format-Table Name,SID,Disabled
 '== Signed in'; quser 2>&1
 '== Helper'; Get-Process Helper -IncludeUserName -ErrorAction SilentlyContinue | Format-Table Id,SessionId,UserName,StartTime
 '== Service manager'; Get-WinEvent -LogName System -MaxEvents 400 | Where-Object { $_.ProviderName -eq 'Service Control Manager' -and $_.Message -like '*Child Monitor*' } | Select-Object -First 10 | Format-List TimeCreated,Message
