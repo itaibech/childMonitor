@@ -10,7 +10,8 @@ namespace Service;
 /// Receives JSON lines from Helpers. The client's SID comes from the pipe (impersonation), never from the row:
 /// rows from unsupervised clients are dropped and <c>win_user</c> is overwritten (see <see cref="PipeRowFilter"/>).
 /// </summary>
-internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervised, ILogger<PipeServer> log)
+internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervised, Action<string, QueueItem> onRow,
+    ILogger<PipeServer> log)
 {
     public const string PipeName = "ChildMonitorPipe";
     private const int MaxInstances = 32;
@@ -133,7 +134,9 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
     private void Accept(string line, Client client)
     {
         var item = PipeRowFilter.Rewrite(line, client.Sid, client.WinUser, supervised());
-        if (item is not null) queue.Upsert(item.Type, item.Id, item.Json);
+        if (item is null) return;
+        queue.Upsert(item.Type, item.Id, item.Json);
+        onRow(client.Sid, item);
     }
 
     /// <summary>

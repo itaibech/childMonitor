@@ -4,17 +4,15 @@ Windows PowerShell 5.1+, run from an elevated prompt.
 
 ```powershell
 .\build.ps1                                   # publishes Service + Helper into installer\out (needs .NET 8 SDK)
-.\install.ps1 -Token <64 hex> -ChromeExtId <32 chars a-p> -EdgeExtId <32 chars a-p>
+.\install.ps1 -Token <64 hex>
 .\uninstall.ps1
 ```
 
-`install.ps1` is idempotent (re-run to upgrade). Both extension ids are required: they are force-installed by policy
-and are the only origins allowed in the native host manifest (the dashboard's install command fills them in from
-`web/src/extensionIds.ts`).
+`install.ps1` is idempotent (re-run to upgrade).
 
-Installed: `C:\Program Files\ChildMonitor` (`ChildMonitorService.exe`, `Helper.exe`, `NativeHost.cmd`, `native-host.json`),
-`C:\ProgramData\ChildMonitor\config.json` (SYSTEM + Administrators only), service `ChildMonitorSvc`, Chrome/Edge policies,
-native host registry keys, DNS `1.1.1.3`/`1.0.0.3`/`2606:4700:4700::1113`/`2606:4700:4700::1003` on up physical adapters,
+Installed: `C:\Program Files\ChildMonitor` (`ChildMonitorService.exe`, `Helper.exe`),
+`C:\ProgramData\ChildMonitor\config.json` (SYSTEM + Administrators only), service `ChildMonitorSvc`, Chrome/Edge policies
+(including `AllowDeletingBrowserHistory=0`, which keeps the history the service reads), DNS `1.1.1.3`/`1.0.0.3`/`2606:4700:4700::1113`/`2606:4700:4700::1003` on up physical adapters,
 Defender exclusion for the install dir.
 
 Phase-4 hardening (not done): Windows OS-level DoH settings are left untouched (only the browsers' `DnsOverHttpsMode=off` policy is set), and adapters that come up after install (new USB/Wi-Fi adapters) are not covered. Re-run `install.ps1` to apply DNS to new adapters.
@@ -31,7 +29,12 @@ Run `install.ps1` as admin with a token from the dashboard, then:
 - `chrome://policy` (and `edge://policy`) list the policies, including `BrowserGuestModeEnabled = 0` (no Guest profile in the profile menu).
 - As testkid, visit a site in Chrome and use an app (e.g. Notepad) for a minute: within 2 minutes both the site visit and
   the app session appear in the dashboard for testkid. This proves the pipe impersonation identifies the client even
-  though the Helper/native host closes its connection right after writing.
+  though the Helper closes its connection right after writing, and that the service can read Chrome's History file
+  while Chrome is open (if sites never appear, check the service log for "History read failed", and that
+  `%LOCALAPPDATA%\Google\Chrome\User Data\Default` has `History-journal`, not `History-wal`: a WAL file would hide
+  the newest visits from the service).
+- Repeat in Edge with several tabs open (window title "… and N more pages - Microsoft Edge"): the site still appears.
+- As testkid, Chrome > History > "Delete browsing data" is greyed out / blocked by the administrator.
 - Settings lists testkid (supervised) and the admin account (admin badge, not supervised); admin activity is absent.
 - Turn on the admin account's switch -> within ~2 min its activity appears and Firefox is killed for it too.
 - Turn testkid off -> its activity stops within ~2 min.

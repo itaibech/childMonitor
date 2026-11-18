@@ -6,11 +6,9 @@ internal static class Program
 {
     private static readonly TimeSpan Poll = TimeSpan.FromSeconds(5);
 
-    private static int Main(string[] args)
+    private static int Main()
     {
         using var pipe = new PipeClient();
-        if (args.Contains("--native-host")) return NativeHost.Run(pipe);
-
         using var single = new Mutex(true, @"Local\ChildMonitorHelper", out var first);
         if (!first) return 0;
         TrackForever(pipe);

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Core;
@@ -18,6 +20,19 @@ public static class ServiceRows
 
     public static QueueItem BrowserBlocked(string winUser, string exe, DateTimeOffset at, string id) =>
         Event("browser_blocked", winUser, at, id, JsonSerializer.SerializeToElement(new { exe }));
+
+    /// <summary>
+    /// The site shown during a browser app session: same times, id derived from the app row so the Helper's 60 s
+    /// refreshes upsert the same web row.
+    /// </summary>
+    public static QueueItem Web(AppRow app, string browser, Visit visit)
+    {
+        var id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes("web:" + app.Id))).ToString("D");
+        var url = visit.Url.Length > PipeLine.MaxUrl ? visit.Url[..PipeLine.MaxUrl] : visit.Url;
+        var title = visit.Title.Length > PipeLine.MaxTitle ? visit.Title[..PipeLine.MaxTitle] : visit.Title;
+        var row = new WebRow(id, app.WinUser, browser, url, title, app.StartedAt, app.EndedAt);
+        return new QueueItem("web", id, JsonSerializer.Serialize(row, Wire.Options));
+    }
 
     public static QueueItem User(UserRow user) =>
         new("user", user.Sid, JsonSerializer.Serialize(user, Wire.Options));

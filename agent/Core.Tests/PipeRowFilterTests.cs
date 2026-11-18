@@ -43,12 +43,13 @@ public sealed class PipeRowFilterTests
         Assert.Null(PipeRowFilter.Rewrite(line, "S-kid", @"PC\kid", Supervised));
 
     [Fact]
-    public void Web_and_event_rows_are_accepted()
+    public void Event_rows_are_accepted_and_web_rows_are_service_only()
     {
-        var web = PipeLine.Web(new WebRow(Id, "x", "chrome", "https://a", "t", T, T));
         var ev = PipeLine.Event(new EventRow(Id, "x", "idle", JsonDocument.Parse("{}").RootElement, T));
-        Assert.Equal("web", PipeRowFilter.Rewrite(web, "S-kid", @"PC\kid", Supervised)!.Type);
+        var web = JsonSerializer.Serialize(new PipeMessage("web", JsonSerializer.SerializeToElement(
+            new WebRow(Id, "x", "chrome", "https://a", "t", T, T), Wire.Options)), Wire.Options);
         Assert.Equal("event", PipeRowFilter.Rewrite(ev, "S-kid", @"PC\kid", Supervised)!.Type);
+        Assert.Null(PipeRowFilter.Rewrite(web, "S-kid", @"PC\kid", Supervised));
     }
 
     [Theory]
@@ -64,12 +65,6 @@ public sealed class PipeRowFilterTests
     private static JsonObject AppRowJson() => new()
     {
         ["id"] = Id, ["win_user"] = "x", ["process"] = "a.exe", ["exe_path"] = @"C:\a.exe", ["title"] = "A",
-        ["started_at"] = "2026-11-18T15:00:00Z", ["ended_at"] = "2026-11-18T15:01:00Z",
-    };
-
-    private static JsonObject WebRowJson() => new()
-    {
-        ["id"] = Id, ["win_user"] = "x", ["browser"] = "chrome", ["url"] = "https://a", ["title"] = "t",
         ["started_at"] = "2026-11-18T15:00:00Z", ["ended_at"] = "2026-11-18T15:01:00Z",
     };
 
@@ -107,7 +102,6 @@ public sealed class PipeRowFilterTests
     public void Missing_session_timestamps_are_dropped(string key)
     {
         Assert.Null(Run("app", Without(AppRowJson(), key)));
-        Assert.Null(Run("web", Without(WebRowJson(), key)));
     }
 
     [Theory]
@@ -117,7 +111,6 @@ public sealed class PipeRowFilterTests
     public void Unparseable_timestamps_are_dropped(string value)
     {
         Assert.Null(Run("app", With(AppRowJson(), "started_at", value)));
-        Assert.Null(Run("web", With(WebRowJson(), "ended_at", value)));
         Assert.Null(Run("event", With(EventRowJson(), "at", value)));
         Assert.Null(Run("app", With(AppRowJson(), "started_at", 12345)));
     }
@@ -129,20 +122,17 @@ public sealed class PipeRowFilterTests
     public void Ended_before_started_is_dropped()
     {
         Assert.Null(Run("app", With(AppRowJson(), "ended_at", "2026-11-18T14:59:59Z")));
-        Assert.Null(Run("web", With(WebRowJson(), "ended_at", "2026-11-18T16:00:00+02:00")));
-        Assert.NotNull(Run("web", With(WebRowJson(), "ended_at", "2026-11-18T17:00:00+02:00")));
+        Assert.Null(Run("app", With(AppRowJson(), "ended_at", "2026-11-18T16:00:00+02:00")));
+        Assert.NotNull(Run("app", With(AppRowJson(), "ended_at", "2026-11-18T17:00:00+02:00")));
     }
 
     [Theory]
     [InlineData("app", "process")]
     [InlineData("app", "exe_path")]
     [InlineData("app", "title")]
-    [InlineData("web", "browser")]
-    [InlineData("web", "url")]
-    [InlineData("web", "title")]
     public void Non_string_or_missing_string_fields_are_dropped(string type, string key)
     {
-        JsonObject Row() => type == "app" ? AppRowJson() : WebRowJson();
+        JsonObject Row() => AppRowJson();
         Assert.Null(Run(type, With(Row(), key, 7)));
         Assert.Null(Run(type, With(Row(), key, null)));
         Assert.Null(Run(type, With(Row(), key, new JsonObject())));
@@ -153,16 +143,13 @@ public sealed class PipeRowFilterTests
     [InlineData("app", "process", 1024)]
     [InlineData("app", "exe_path", 1024)]
     [InlineData("app", "title", 300)]
-    [InlineData("web", "browser", 16)]
-    [InlineData("web", "url", 2000)]
-    [InlineData("web", "title", 300)]
     public void Long_string_fields_are_truncated_not_dropped(string type, string key, int cap)
     {
-        var row = type == "app" ? AppRowJson() : WebRowJson();
+        var row = AppRowJson();
         var item = Run(type, With(row, key, new string('x', cap + 50)));
         Assert.NotNull(item);
         Assert.Equal(cap, JsonNode.Parse(item.Json)![key]!.GetValue<string>().Length);
-        var exact = Run(type, With(type == "app" ? AppRowJson() : WebRowJson(), key, new string('y', cap)));
+        var exact = Run(type, With(AppRowJson(), key, new string('y', cap)));
         Assert.Equal(cap, JsonNode.Parse(exact!.Json)![key]!.GetValue<string>().Length);
     }
 

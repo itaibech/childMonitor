@@ -1,7 +1,0 @@
-{
-  "name": "com.itaibech.childmonitor",
-  "description": "Child Monitor native messaging host",
-  "path": "__PATH__",
-  "type": "stdio",
-  "allowed_origins": [__ORIGINS__]
-}

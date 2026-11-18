@@ -102,7 +102,6 @@ internal sealed class SessionLauncher(ILogger<SessionLauncher> log)
                 using (mo)
                 {
                     if (!HelperPath.Equals((string?)mo["ExecutablePath"], StringComparison.OrdinalIgnoreCase)) continue;
-                    if (((string?)mo["CommandLine"] ?? "").Contains("--native-host")) continue;
                     try { Kill(Process.GetProcessById((int)(uint)mo["ProcessId"])); }
                     catch (ArgumentException) { /* already gone */ }
                 }

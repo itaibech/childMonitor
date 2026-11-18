@@ -4,40 +4,26 @@
   Installs the Child Monitor agent on this laptop. Idempotent: safe to re-run to upgrade.
 .PARAMETER Token
   64-hex-char pairing token from the dashboard.
-.PARAMETER ChromeExtId
-  Chrome Web Store ID of the Child Monitor extension (32 chars a-p). Required: it is force-installed by policy.
-.PARAMETER EdgeExtId
-  Edge Add-ons ID of the Child Monitor extension (32 chars a-p). Required: it is force-installed by policy.
 #>
 param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[0-9a-fA-F]{64}$')]
-    [string]$Token,
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern('^[a-p]{32}$')]
-    [string]$ChromeExtId,
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern('^[a-p]{32}$')]
-    [string]$EdgeExtId
+    [string]$Token
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $ServiceName = 'ChildMonitorSvc'
-$HostName = 'com.itaibech.childmonitor'
 if (-not [Environment]::Is64BitProcess) { throw 'Run from 64-bit PowerShell' }
 
 $InstallDir = 'C:\Program Files\ChildMonitor'
 $DataDir = 'C:\ProgramData\ChildMonitor'
-$StateKey = 'HKLM:\SOFTWARE\ChildMonitor'
 $SourceDir = Join-Path $PSScriptRoot 'out'
 $SupabaseUrl = 'https://hyeslwlewvvjiyizoduf.supabase.co'
 # Publishable key: public by design, RLS protects the data.
 $ApiKey = 'sb_publishable_de6tynv8AkIVfS9U5HYxyA_8NMR4tLo'
 $DnsServers = @('1.1.1.3', '1.0.0.3', '2606:4700:4700::1113', '2606:4700:4700::1003')
-$ChromeUpdateUrl = 'https://clients2.google.com/service/update2/crx'
-$EdgeUpdateUrl = 'https://edge.microsoft.com/extensionwebstorebase/v1/crx'
 
 # Service ACL (SDDL). Rights: CC query config, DC change config, LC query status, SW enumerate
 # dependents, RP start, WP stop, DT pause, LO interrogate, CR user control, SD delete,
@@ -97,22 +83,6 @@ function Install-AgentService {
     if ($image -ne $binPath) { throw "Service ImagePath mismatch: $image" }
 }
 
-function Write-NativeHost {
-    $cmd = Join-Path $InstallDir 'NativeHost.cmd'
-    Set-Content -Path $cmd -Value @('@echo off', '"%~dp0Helper.exe" --native-host %*') -Encoding Ascii
-    $ids = @($ChromeExtId, $EdgeExtId) | Where-Object { $_ }
-    $origins = ($ids | ForEach-Object { '"chrome-extension://' + $_ + '/"' }) -join ', '
-    $template = Get-Content -Raw -Path (Join-Path $PSScriptRoot 'native-host.json')
-    $manifest = $template.Replace('__PATH__', $cmd.Replace('\', '\\')).Replace('__ORIGINS__', $origins)
-    $manifestPath = Join-Path $InstallDir 'native-host.json'
-    [System.IO.File]::WriteAllText($manifestPath, $manifest, (New-Object System.Text.UTF8Encoding($false)))
-    foreach ($base in 'HKLM:\SOFTWARE\Google\Chrome\NativeMessagingHosts', 'HKLM:\SOFTWARE\Microsoft\Edge\NativeMessagingHosts') {
-        $key = Join-Path $base $HostName
-        New-Key $key
-        Set-ItemProperty -Path $key -Name '(default)' -Value $manifestPath
-    }
-}
-
 # New-Item -Force on an existing key deletes it in PS 5.1, so only create when missing.
 function New-Key([string]$Path) {
     if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
@@ -123,42 +93,19 @@ function Set-PolicyValue([string]$Path, [string]$Name, $Value, [string]$Type) {
     New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
 }
 
-# Reuse the slot already holding this extension, else the next free integer name.
-function Get-ForcelistSlot([string]$List, [string]$ExtId) {
-    if (-not (Test-Path $List)) { return '1' }
-    $props = (Get-Item -Path $List).Property
-    $max = 0
-    foreach ($n in $props) {
-        $v = [string](Get-ItemProperty -Path $List -Name $n).$n
-        if ($v.StartsWith("$ExtId;")) { return $n }
-        $i = 0
-        if ([int]::TryParse($n, [ref]$i) -and $i -gt $max) { $max = $i }
-    }
-    return [string]($max + 1)
-}
-
-function Save-ExtIds {
-    New-Key $StateKey
-    Set-ItemProperty -Path $StateKey -Name ChromeExtId -Value $ChromeExtId
-    Set-ItemProperty -Path $StateKey -Name EdgeExtId -Value $EdgeExtId
-}
-
-function Set-BrowserPolicy([string]$Root, [string]$ExtId, [string]$UpdateUrl, [hashtable]$Dwords) {
+# AllowDeletingBrowserHistory=0 keeps the history the service reads to see which sites were open.
+function Set-BrowserPolicy([string]$Root, [hashtable]$Dwords) {
     foreach ($name in $Dwords.Keys) { Set-PolicyValue $Root $name $Dwords[$name] 'DWord' }
     # DnsOverHttpsMode is a string policy, not a DWord.
     Set-PolicyValue $Root 'DnsOverHttpsMode' 'off' 'String'
-    if ($ExtId) {
-        $list = "$Root\ExtensionInstallForcelist"
-        Set-PolicyValue $list (Get-ForcelistSlot $list $ExtId) "$ExtId;$UpdateUrl" 'String'
-    }
 }
 
 function Set-MachinePolicies {
-    Set-BrowserPolicy 'HKLM:\SOFTWARE\Policies\Google\Chrome' $ChromeExtId $ChromeUpdateUrl @{
-        IncognitoModeAvailability = 1; BrowserGuestModeEnabled = 0; ForceGoogleSafeSearch = 1; ForceYouTubeRestrict = 1
+    Set-BrowserPolicy 'HKLM:\SOFTWARE\Policies\Google\Chrome' @{
+        AllowDeletingBrowserHistory = 0; IncognitoModeAvailability = 1; BrowserGuestModeEnabled = 0; ForceGoogleSafeSearch = 1; ForceYouTubeRestrict = 1
     }
-    Set-BrowserPolicy 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' $EdgeExtId $EdgeUpdateUrl @{
-        InPrivateModeAvailability = 1; BrowserGuestModeEnabled = 0; ForceBingSafeSearch = 2; ForceGoogleSafeSearch = 1
+    Set-BrowserPolicy 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' @{
+        AllowDeletingBrowserHistory = 0; InPrivateModeAvailability = 1; BrowserGuestModeEnabled = 0; ForceBingSafeSearch = 2; ForceGoogleSafeSearch = 1
         ForceYouTubeRestrict = 1
     }
 }
@@ -181,9 +128,7 @@ Add-DefenderExclusion
 Copy-AgentFiles
 Write-AgentConfig
 Install-AgentService
-Write-NativeHost
 Set-MachinePolicies
 Set-AdapterDns
-Save-ExtIds
 Start-Service -Name $ServiceName
 Get-Service -Name $ServiceName | Format-Table Name, Status, StartType -AutoSize

@@ -22,6 +22,7 @@ internal sealed class Worker : BackgroundService
     private readonly SessionLauncher _sessions;
     private readonly PipeServer _pipe;
     private readonly BrowserKiller _killer;
+    private readonly SiteTracker _sites;
     private readonly ILogger<Worker> _log;
     private readonly object _gate = new();
     private volatile IReadOnlySet<string> _supervised = new HashSet<string>();
@@ -31,7 +32,8 @@ internal sealed class Worker : BackgroundService
         _log = logs.CreateLogger<Worker>();
         _uploader = new Uploader(_queue, _http, Config.Load(), _store);
         _sessions = new SessionLauncher(logs.CreateLogger<SessionLauncher>());
-        _pipe = new PipeServer(_queue, () => _supervised, logs.CreateLogger<PipeServer>());
+        _sites = new SiteTracker(Enqueue, logs.CreateLogger<SiteTracker>());
+        _pipe = new PipeServer(_queue, () => _supervised, _sites.OnPipeRow, logs.CreateLogger<PipeServer>());
         _killer = new BrowserKiller(_sessions, () => _supervised, Enqueue, logs.CreateLogger<BrowserKiller>());
         _store.Changed += OnSupervisionChanged;
     }
@@ -67,6 +69,7 @@ internal sealed class Worker : BackgroundService
     {
         _sessions.Reconcile(_supervised);
         _killer.Sweep();
+        _sites.Retry(_supervised);
     }
 
     /// <summary>Queue all local accounts; while the server has never answered, derive supervision from them.</summary>

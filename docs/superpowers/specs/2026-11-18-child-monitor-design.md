@@ -163,3 +163,12 @@ Retention: raw sessions kept 90 days (scheduled `pg_cron` delete if available on
 - Exact .NET packaging (single-file vs. folder), SQLite library, chart library for the dashboard (prefer none / small).
 - Batch size, polling intervals (defaults above are starting points).
 - How to test the Windows parts without a Windows machine in CI (unit-test pure logic on any OS; Win32 integration tested on the laptops).
+
+## Change (Itai, 2026-11-18): service instead of browser extension
+
+The extension is dropped (no store publishing, no extension IDs). Sites come from the service:
+
+- The Helper already reports the foreground window title. When it is Chrome or Edge, the service matches that title to the newest visit in that account's browser history (`<profile>\AppData\Local\{Google\Chrome|Microsoft\Edge}\User Data\<any profile>\History`, read-only with SQLite `immutable=1`) whose page title is the longest prefix of the window title. That gives the URL; start/end are the app session's, so time per site is foreground time.
+- Unmatched titles (history not saved yet) are retried for 3 minutes, then dropped. Pages with an empty or generic title may match the wrong visit or none.
+- Policy `AllowDeletingBrowserHistory=0` (Chrome + Edge) keeps history; Incognito/InPrivate/Guest stay off.
+- Phase 3 site blocking uses the browsers' `URLBlocklist` policy instead of the extension.

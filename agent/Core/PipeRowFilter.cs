@@ -8,14 +8,13 @@ namespace Core;
 /// <summary>Validates a pipe line and stamps it with the pipe client's identity (R4).</summary>
 public static class PipeRowFilter
 {
-    private static readonly HashSet<string> Types = ["app", "web", "event"];
+    private static readonly HashSet<string> Types = ["app", "event"];
     private static readonly HashSet<string> HelperEventKinds = ["idle", "active"];
 
     /// <summary>Required string fields per row type and their maximum length (longer values are truncated).</summary>
     private static readonly Dictionary<string, (string Field, int Max)[]> StringFields = new()
     {
         ["app"] = [("process", 1024), ("exe_path", 1024), ("title", PipeLine.MaxTitle)],
-        ["web"] = [("browser", 16), ("url", PipeLine.MaxUrl), ("title", PipeLine.MaxTitle)],
         ["event"] = [],
     };
 
