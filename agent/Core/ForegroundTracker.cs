@@ -9,7 +9,7 @@ public sealed class ForegroundTracker
     public const int MaxTitle = 300;
 
     private sealed record Open(Guid Id, string Process, string ExePath, string Title,
-        DateTimeOffset StartedAt, DateTimeOffset LastEmit);
+        DateTimeOffset StartedAt, DateTimeOffset LastEmit, DateTimeOffset LastEnd);
 
     private readonly string _winUser;
     private readonly Func<Guid> _newId;
@@ -34,21 +34,23 @@ public sealed class ForegroundTracker
             _open = null;
         }
         if (active && _open is null)
-            _open = new Open(_newId(), s.Process, s.ExePath, title, nowUtc, nowUtc);
+            _open = new Open(_newId(), s.Process, s.ExePath, title, nowUtc, nowUtc, nowUtc);
         else if (_open is not null && nowUtc - _open.LastEmit >= RefreshEvery)
         {
-            rows.Add(ToRow(_open, nowUtc));
-            _open = _open with { LastEmit = nowUtc };
+            var end = EndFor(_open, s, nowUtc);
+            rows.Add(ToRow(_open, end));
+            _open = _open with { LastEmit = nowUtc, LastEnd = end };
         }
         return rows;
     }
 
-    // Idle time is not usage: end at the last input. Locked/other closes end now.
+    // Idle time is not usage and the server keeps greatest(ended_at), so every emitted end is
+    // non-decreasing and never passes the last input. A lock close ends now.
     private static DateTimeOffset EndFor(Open o, Sample s, DateTimeOffset now)
     {
-        if (s.Locked || s.Idle < IdleThreshold) return now;
-        var lastInput = now - s.Idle;
-        return lastInput > o.StartedAt ? lastInput : o.StartedAt;
+        var end = s.Locked ? now : now - s.Idle;
+        if (end < o.StartedAt) end = o.StartedAt;
+        return end < o.LastEnd ? o.LastEnd : end;
     }
 
     private AppRow ToRow(Open o, DateTimeOffset end) =>

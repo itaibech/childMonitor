@@ -60,6 +60,19 @@ public sealed class ForegroundTrackerTests
     }
 
     [Fact]
+    public void refresh_during_idle_never_passes_last_input()
+    {
+        var t = NewTracker();
+        var ends = new List<DateTimeOffset>();
+        for (var sec = 0; sec <= 150; sec += 5)
+        {
+            var idle = Math.Max(0, sec - 30);
+            ends.AddRange(t.Observe(S("a.exe", idle: idle), T0.AddSeconds(sec)).Select(r => r.EndedAt));
+        }
+        Assert.Equal(new[] { T0.AddSeconds(30), T0.AddSeconds(30), T0.AddSeconds(30) }, ends);
+    }
+
+    [Fact]
     public void activity_after_idle_opens_new_session()
     {
         var t = NewTracker();
