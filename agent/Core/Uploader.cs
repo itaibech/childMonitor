@@ -101,6 +101,7 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
             Content = JsonContent.Create(body),
         };
         req.Headers.Add("apikey", cfg.ApiKey);
+        req.Headers.Add("Content-Profile", "childmonitor"); // ingest lives in the childmonitor schema, not public
         req.Headers.Authorization = new("Bearer", cfg.ApiKey);
         return req;
     }

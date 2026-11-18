@@ -136,6 +136,7 @@ export function Diagnose() {
       {reports.map((r) => (
         <details key={r.id}>
           <summary>Report from {new Date(r.created_at).toLocaleString('en-GB')}</summary>
+          <CopyButton text={r.body} what="report" />
           <pre>{r.body}</pre>
         </details>
       ))}

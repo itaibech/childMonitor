@@ -92,6 +92,7 @@ public sealed class UploaderTests : IDisposable
         Assert.Equal("https://x.supabase.co/rest/v1/rpc/ingest", req.RequestUri!.ToString());
         Assert.Equal("key", req.Headers.GetValues("apikey").Single());
         Assert.Equal("Bearer key", req.Headers.Authorization!.ToString());
+        Assert.Equal("childmonitor", req.Headers.GetValues("Content-Profile").Single());
     }
 
     [Fact]
