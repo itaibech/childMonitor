@@ -38,13 +38,13 @@ function timeline(day: DayData): Entry[] {
 }
 
 function HourBars({ day, range }: { day: DayData; range: Range }) {
-  const bars = byHour([...day.apps, ...day.web], range)
+  const bars = byHour(day.apps, range)
   return (
     <div className="hours">
       {bars.map((min, i) => {
         const label = fmtTime(range.start.getTime() + i * 3_600_000)
         return (
-          <div key={label} className="hour" title={`${label}: ${Math.round(min)} min`}>
+          <div key={i} className="hour" title={`${label}: ${Math.round(min)} min`}>
             <div className="bar" style={{ height: `${(min / 60) * 100}%` }} />
             <span>{label.slice(0, 2)}</span>
           </div>
@@ -101,7 +101,7 @@ function Body({ day, range }: { day: DayData; range: Range }) {
   const web = clip(day.web, range)
   return (
     <>
-      <p className="screen-time">{fmtDuration(screenTimeMs([...day.apps, ...day.web], range))} screen time</p>
+      <p className="screen-time">{fmtDuration(screenTimeMs(day.apps, range))} screen time</p>
       <HourBars day={day} range={range} />
       <Totals title="Apps" rows={topBy(apps, (a) => a.process)} />
       <Totals title="Sites" rows={topBy(web, (w) => w.domain)} />
@@ -116,10 +116,16 @@ export function ChildDay({ id, date }: { id: string; date: string | null }) {
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState('')
   useEffect(() => {
+    let live = true
     setLoaded(null)
     setError(null)
-    load(id, dayRange(day)).then(setLoaded, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+    load(id, dayRange(day)).then(
+      (l) => { if (live) setLoaded(l) },
+      (e: unknown) => { if (live) setError(e instanceof Error ? e.message : String(e)) },
+    )
+    return () => { live = false }
   }, [id, day])
+  useEffect(() => setUser(''), [id])
   if (error) return <p role="alert">Could not load data: {error}</p>
   if (!loaded) return <p>Loading…</p>
   if (!loaded.child) return <p role="alert">Child not found</p>

@@ -57,7 +57,7 @@ function ChildCard({ child, data }: { child: Child; data: HomeData }) {
   return (
     <li className="card" style={{ '--c': child.color } as CSSProperties}>
       <h3><a href={`#/child/${child.id}`}>{child.name}</a></h3>
-      <p className="screen-time">{fmtDuration(screenTimeMs([...apps, ...web], range))} today</p>
+      <p className="screen-time">{fmtDuration(screenTimeMs(apps, range))} today</p>
       <p><span className={`dot dot-${status}`} aria-label={`status ${status}`} /> last seen {lastSeen(devs)}</p>
       <TopList title="Top apps" items={topBy(clip(apps, range), (a) => a.process).slice(0, 3)} />
       <TopList title="Top sites" items={topBy(clip(web, range), (w) => w.domain).slice(0, 3)} />
@@ -69,7 +69,12 @@ export function Home() {
   const [data, setData] = useState<HomeData | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    load().then(setData, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+    let live = true
+    load().then(
+      (d) => { if (live) setData(d) },
+      (e: unknown) => { if (live) setError(e instanceof Error ? e.message : String(e)) },
+    )
+    return () => { live = false }
   }, [])
   if (error) return <p role="alert">Could not load data: {error}</p>
   if (!data) return <p>Loading…</p>

@@ -25,46 +25,69 @@ export async function fetchDevices(): Promise<Device[]> {
   return ok(await supabase.from('devices').select('*').order('name'))
 }
 
-async function fetchOverlapping<T>(table: string, deviceIds: string[], range: Range, order: string): Promise<T[]> {
+const PAGE = 1000
+
+interface PageQuery<T> {
+  range(from: number, to: number): PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+}
+
+async function fetchAll<T>(build: () => PageQuery<T>): Promise<T[]> {
+  const out: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const page = ok(await build().range(from, from + PAGE - 1))
+    out.push(...page)
+    if (page.length < PAGE) return out
+  }
+}
+
+async function fetchOverlapping<T>(table: string, deviceIds: string[], range: Range): Promise<T[]> {
   if (deviceIds.length === 0) return []
-  return ok(
-    await supabase
+  return fetchAll<T>(() =>
+    supabase
       .from(table)
       .select('*')
       .in('device_id', deviceIds)
       .lt('started_at', range.end.toISOString())
       .gt('ended_at', range.start.toISOString())
-      .order(order),
+      .order('started_at')
+      .order('id'),
+  )
+}
+
+async function fetchEvents(deviceIds: string[], range: Range): Promise<DeviceEvent[]> {
+  if (deviceIds.length === 0) return []
+  return fetchAll<DeviceEvent>(() =>
+    supabase
+      .from('device_events')
+      .select('*')
+      .in('device_id', deviceIds)
+      .gte('at', range.start.toISOString())
+      .lt('at', range.end.toISOString())
+      .order('at')
+      .order('id'),
   )
 }
 
 export async function fetchDay(deviceIds: string[], range: Range): Promise<DayData> {
   const [apps, web, events] = await Promise.all([
-    fetchOverlapping<AppSession>('app_sessions', deviceIds, range, 'started_at'),
-    fetchOverlapping<WebSession>('web_sessions', deviceIds, range, 'started_at'),
-    deviceIds.length === 0
-      ? Promise.resolve([] as DeviceEvent[])
-      : supabase
-          .from('device_events')
-          .select('*')
-          .in('device_id', deviceIds)
-          .gte('at', range.start.toISOString())
-          .lt('at', range.end.toISOString())
-          .order('at')
-          .then((r) => ok<DeviceEvent[]>(r)),
+    fetchOverlapping<AppSession>('app_sessions', deviceIds, range),
+    fetchOverlapping<WebSession>('web_sessions', deviceIds, range),
+    fetchEvents(deviceIds, range),
   ])
   return { apps, web, events }
 }
 
 /** Latest event per device (for the status dot). */
 export async function fetchLastEvents(deviceIds: string[]): Promise<Map<string, DeviceEvent>> {
+  const rows = await Promise.all(
+    deviceIds.map(async (id) =>
+      ok<DeviceEvent[]>(
+        await supabase.from('device_events').select('*').eq('device_id', id).order('at', { ascending: false }).limit(1),
+      )[0],
+    ),
+  )
   const out = new Map<string, DeviceEvent>()
-  for (const id of deviceIds) {
-    const rows = ok<DeviceEvent[]>(
-      await supabase.from('device_events').select('*').eq('device_id', id).order('at', { ascending: false }).limit(1),
-    )
-    if (rows[0]) out.set(id, rows[0])
-  }
+  rows.forEach((e, i) => { if (e) out.set(deviceIds[i], e) })
   return out
 }
 
