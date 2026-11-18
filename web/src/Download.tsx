@@ -174,6 +174,33 @@ function Steps() {
   )
 }
 
+function Faq() {
+  return (
+    <section className="panel faq">
+      <h2>Common questions</h2>
+      <details>
+        <summary>The install says the service "cannot be started", or Windows shows a security popup</summary>
+        <p>Windows 11 Smart App Control is blocking it. It blocks programs that aren't code-signed, and Child Monitor isn't signed yet. It has no way to allow a single program, so it has to be turned off:</p>
+        <ol>
+          <li>Sign in to the laptop with an administrator account.</li>
+          <li>Open Start, type <b>Smart App Control</b> and open it (or Windows Security, App &amp; browser control, Smart App Control settings).</li>
+          <li>Choose <b>Off</b> and confirm. Microsoft Defender antivirus keeps protecting the laptop.</li>
+          <li>Run the install command from step 4 again.</li>
+        </ol>
+        <p className="muted">On some Windows versions Smart App Control can't be turned back on without reinstalling Windows. The <a href="#/diagnose">Diagnostics</a> report shows its state: 0 is off, 1 on, 2 evaluation.</p>
+      </details>
+      <details>
+        <summary>The laptop says Reporting, but no apps or sites show up</summary>
+        <p>Only supervised accounts are recorded, and administrator accounts aren't supervised unless you turn them on in <a href="#/settings">Settings</a>. Sign in to Windows with the child's own account and use the laptop; activity shows up within a couple of minutes.</p>
+      </details>
+      <details>
+        <summary>The laptop says Not reporting</summary>
+        <p>Run the check on the <a href="#/diagnose">Diagnostics</a> page on that laptop and send the report.</p>
+      </details>
+    </section>
+  )
+}
+
 export function Download() {
   const [file, setFile] = useState<ClientFile | null | undefined>(undefined)
   const [error, setError] = useState('')
@@ -195,6 +222,7 @@ export function Download() {
       </section>
       <h2>How to install</h2>
       <Steps />
+      <Faq />
       <section className="panel">
         <h2>Remove it later</h2>
         <p>In the same folder, in an administrator PowerShell:</p>
