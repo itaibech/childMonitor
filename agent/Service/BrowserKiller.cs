@@ -52,6 +52,7 @@ internal sealed class BrowserKiller(
         try
         {
             using var p = Process.GetProcessById(pid);
+            if (!BrowserBlocklist.IsBlocked(p.ProcessName + ".exe")) return; // PID reused since the event
             p.Kill();
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException

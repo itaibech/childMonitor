@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using System.Text;
 using Core;
 
@@ -59,8 +61,7 @@ internal sealed class PipeClient : IDisposable
     {
         try
         {
-            using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
-            pipe.Connect(1000);
+            using var pipe = Open();
             using var w = new StreamWriter(pipe, new UTF8Encoding(false)) { NewLine = "\n" };
             foreach (var l in lines) w.WriteLine(l);
             w.Flush();
@@ -70,6 +71,36 @@ internal sealed class PipeClient : IDisposable
         {
             return false;
         }
+    }
+
+    private const uint FileWriteData = 0x0002;
+    private const uint FileReadAttributes = 0x0080;
+    private const uint Synchronize = 0x00100000;
+    private const uint OpenExisting = 3;
+    private const uint SecuritySqosPresent = 0x00100000;
+    private const uint SecurityIdentification = 0x00010000;
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern SafePipeHandle CreateFileW(string name, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+
+    /// <summary>
+    /// Opens the pipe with explicit rights rather than PipeDirection.Out: GENERIC_WRITE includes FILE_APPEND_DATA,
+    /// the same bit as FILE_CREATE_PIPE_INSTANCE, which the service does not grant to users. .NET 8 has no
+    /// NamedPipeClientStream constructor taking PipeAccessRights, so CreateFile is called directly. SQOS
+    /// Identification: the service may read our SID but not act as us.
+    /// </summary>
+    private static NamedPipeClientStream Open()
+    {
+        var handle = CreateFileW($@"\\.\pipe\{PipeName}", FileWriteData | FileReadAttributes | Synchronize, 0,
+            IntPtr.Zero, OpenExisting, SecuritySqosPresent | SecurityIdentification, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            handle.Dispose();
+            throw new IOException($"Pipe open failed: {error}");
+        }
+        return new NamedPipeClientStream(PipeDirection.Out, false, true, handle);
     }
 
     public void Dispose()

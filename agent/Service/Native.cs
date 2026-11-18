@@ -55,6 +55,43 @@ internal static class Native
         IntPtr threadAttr, bool inherit, uint flags, IntPtr env, string cwd, ref StartupInfo si,
         out ProcessInformation pi);
 
+    [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentThread();
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenThreadToken(IntPtr thread, uint access, bool openAsSelf, out IntPtr token);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr token, int infoClass, IntPtr info, int length,
+        out int returned);
+
+    private const uint TokenQuery = 0x0008;
+    private const int TokenUserClass = 1;
+
+    /// <summary>
+    /// Called while impersonating a pipe client. OpenAsSelf=true is required when the client allows only
+    /// SecurityIdentification (OpenThreadToken docs). Returns IntPtr.Zero on failure.
+    /// </summary>
+    public static IntPtr OpenThreadTokenAsSelf() =>
+        OpenThreadToken(GetCurrentThread(), TokenQuery, true, out var token) ? token : IntPtr.Zero;
+
+    /// <summary>SID string of a token's user (TOKEN_USER); always closes the token.</summary>
+    public static string? TokenUserSidAndClose(IntPtr token)
+    {
+        if (token == IntPtr.Zero) return null;
+        var buf = IntPtr.Zero;
+        try
+        {
+            GetTokenInformation(token, TokenUserClass, IntPtr.Zero, 0, out var size);
+            if (size <= 0) return null;
+            buf = Marshal.AllocHGlobal(size);
+            if (!GetTokenInformation(token, TokenUserClass, buf, size, out _)) return null;
+            return new SecurityIdentifier(Marshal.ReadIntPtr(buf)).Value; // TOKEN_USER.User.Sid
+        }
+        finally
+        {
+            if (buf != IntPtr.Zero) Marshal.FreeHGlobal(buf);
+            CloseHandle(token);
+        }
+    }
+
     /// <summary>Ids of all WTS sessions except session 0.</summary>
     public static List<int> SessionIds()
     {

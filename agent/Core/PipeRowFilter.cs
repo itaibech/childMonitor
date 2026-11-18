@@ -30,7 +30,7 @@ public static class PipeRowFilter
 
     private static bool IsAllowed(string type, JsonObject row)
     {
-        if (row["id"] is not JsonValue v || !v.TryGetValue<string>(out var id) || id.Length == 0) return false;
+        if (row["id"] is not JsonValue v || !v.TryGetValue<string>(out var id) || !Guid.TryParse(id, out _)) return false;
         if (type != "event") return true;
         return row["kind"] is JsonValue k && k.TryGetValue<string>(out var kind) && HelperEventKinds.Contains(kind);
     }

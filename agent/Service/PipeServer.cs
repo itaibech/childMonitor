@@ -1,7 +1,6 @@
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.Text;
 using Core;
 using Microsoft.Extensions.Logging;
 
@@ -16,6 +15,9 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
     public const string PipeName = "ChildMonitorPipe";
     private const int MaxInstances = 32;
     private const int MaxLine = 64 * 1024;
+    private const int ChunkSize = 4096;
+
+    private int _live;
 
     private sealed record Client(string Sid, string WinUser);
 
@@ -35,15 +37,35 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
             catch (OperationCanceledException) { break; }
             catch (Exception e)
             {
-                log.LogWarning(e, "Pipe accept failed");
+                log.LogWarning(e, "Pipe create/accept failed (another process may own {Pipe}); retrying", PipeName);
                 try { await Task.Delay(TimeSpan.FromSeconds(5), ct); }
                 catch (OperationCanceledException) { break; }
             }
-            finally { pipe?.Dispose(); }
+            finally { if (pipe is not null) Release(pipe); }
         }
     }
 
-    private static NamedPipeServerStream Create()
+    /// <summary>
+    /// When none of our instances exist, insist on creating the first one (FILE_FLAG_FIRST_PIPE_INSTANCE) so we
+    /// never join a pipe squatted by another process.
+    /// </summary>
+    private NamedPipeServerStream Create()
+    {
+        var options = PipeOptions.Asynchronous;
+        if (Volatile.Read(ref _live) == 0) options |= PipeOptions.FirstPipeInstance;
+        var pipe = NamedPipeServerStreamAcl.Create(PipeName, PipeDirection.In, MaxInstances,
+            PipeTransmissionMode.Byte, options, 0, 0, Security());
+        Interlocked.Increment(ref _live);
+        return pipe;
+    }
+
+    private void Release(NamedPipeServerStream pipe)
+    {
+        pipe.Dispose();
+        Interlocked.Decrement(ref _live);
+    }
+
+    private static PipeSecurity Security()
     {
         var sec = new PipeSecurity();
         sec.AddAccessRule(Rule(WellKnownSidType.LocalSystemSid, PipeAccessRights.FullControl));
@@ -52,8 +74,7 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
         sec.AddAccessRule(Rule(WellKnownSidType.AuthenticatedUserSid, PipeAccessRights.ReadWrite));
         sec.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
             PipeAccessRights.FullControl, AccessControlType.Deny));
-        return NamedPipeServerStreamAcl.Create(PipeName, PipeDirection.In, MaxInstances, PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous, 0, 0, sec);
+        return sec;
     }
 
     private static PipeAccessRule Rule(WellKnownSidType sid, PipeAccessRights rights) =>
@@ -61,40 +82,48 @@ internal sealed class PipeServer(Queue queue, Func<IReadOnlySet<string>> supervi
 
     private async Task HandleAsync(NamedPipeServerStream pipe, CancellationToken ct)
     {
-        await using var _ = pipe;
         try
         {
-            using var reader = new StreamReader(pipe, new UTF8Encoding(false));
-            var line = await reader.ReadLineAsync(ct); // impersonation needs data read first
-            if (line is null) return;
+            var buf = new byte[ChunkSize];
+            var n = await pipe.ReadAsync(buf, ct); // impersonation needs a read first; this one is bounded
+            if (n == 0) return;
             var client = Identify(pipe);
-            if (client is null) return;
-            for (; line is not null; line = await reader.ReadLineAsync(ct)) Accept(line, client);
+            if (client is null || !supervised().Contains(client.Sid)) return; // disconnect at once
+            var splitter = new LineSplitter(MaxLine);
+            var lines = new List<string>();
+            for (; n > 0; n = await pipe.ReadAsync(buf, ct))
+            {
+                var ok = splitter.TryFeed(buf.AsSpan(0, n), lines);
+                foreach (var line in lines) Accept(line, client);
+                lines.Clear();
+                if (!ok) return; // oversized line: drop the client
+            }
         }
         catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException) { }
         catch (Exception e) { log.LogWarning(e, "Pipe client failed"); }
+        finally { Release(pipe); }
     }
 
     private void Accept(string line, Client client)
     {
-        if (line.Length > MaxLine) return;
         var item = PipeRowFilter.Rewrite(line, client.Sid, client.WinUser, supervised());
         if (item is not null) queue.Upsert(item.Type, item.Id, item.Json);
     }
 
+    /// <summary>
+    /// Impersonate, open the thread token as self (required at Identification level), revert, then read the SID
+    /// and resolve the name outside impersonation — the documented pattern for identify-level clients.
+    /// </summary>
     private Client? Identify(NamedPipeServerStream pipe)
     {
         try
         {
-            SecurityIdentifier? sid = null;
-            pipe.RunAsClient(() =>
-            {
-                using var id = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
-                sid = id.User;
-            });
+            var token = IntPtr.Zero;
+            pipe.RunAsClient(() => token = Native.OpenThreadTokenAsSelf());
+            var sid = Native.TokenUserSidAndClose(token);
             if (sid is null) return null;
-            // Resolve the name as ourselves; an Identification-level token cannot do LSA lookups.
-            return new Client(sid.Value, ((NTAccount)sid.Translate(typeof(NTAccount))).Value);
+            var name = new SecurityIdentifier(sid).Translate(typeof(NTAccount)).Value;
+            return new Client(sid, name);
         }
         catch (SystemException e)
         {
