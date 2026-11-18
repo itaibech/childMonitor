@@ -111,6 +111,10 @@ export async function renameChild(id: string, name: string): Promise<void> {
   check(await supabase.from('children').update({ name }).eq('id', id))
 }
 
+export async function setChildPhoto(id: string, photo: string | null): Promise<void> {
+  check(await supabase.from('children').update({ photo }).eq('id', id))
+}
+
 export async function deleteChild(id: string): Promise<void> {
   check(await supabase.from('children').delete().eq('id', id))
 }

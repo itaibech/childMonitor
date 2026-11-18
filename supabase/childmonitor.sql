@@ -232,3 +232,9 @@ drop policy if exists diagnostics_admin on childmonitor.diagnostics;
 create policy diagnostics_admin on childmonitor.diagnostics for all
   using (public.is_admin()) with check (public.is_admin());
 grant select, insert, delete on childmonitor.diagnostics to authenticated;
+
+-- Child photo: a small square JPEG (resized in the browser) stored inline, admin-only through the children policy.
+alter table childmonitor.children add column if not exists photo text;
+alter table childmonitor.children drop constraint if exists children_photo_check;
+alter table childmonitor.children add constraint children_photo_check
+  check (photo is null or (photo like 'data:image/%' and length(photo) <= 300000));

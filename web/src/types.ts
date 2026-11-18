@@ -2,6 +2,7 @@ export interface Child {
   id: string
   name: string
   color: string | null
+  photo: string | null // small square JPEG as a data URL
 }
 
 export interface Device {

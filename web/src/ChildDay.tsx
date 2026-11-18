@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { Columns, DayClock, Donut, Heatmap, Skeleton } from './art.tsx'
+import { Avatar, Columns, DayClock, Donut, Heatmap, Skeleton } from './art.tsx'
 import { fetchChildren, fetchDay, fetchDevices } from './data.ts'
 import type { DayData } from './data.ts'
 import type { Child, DeviceEvent } from './types.ts'
@@ -203,7 +203,7 @@ function Header({ child, data, date, week }: { child: Child; data: DayData; date
       <DayClock minutes={byHour(data.apps, range)} totalMs={total} color="var(--kid)" size={150} />
       <div>
         <a className="back" href="#/">All children</a>
-        <h1>{child.name}</h1>
+        <div className="kid-name"><Avatar child={child} size={56} /><h1>{child.name}</h1></div>
         <p className="when">{when}</p>
         <p className="lede">{week ? weekSummary(data, date) : `${fmtDuration(total)} on the laptop`}</p>
       </div>

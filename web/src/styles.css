@@ -315,3 +315,13 @@ details.panel[open] summary { margin-block-end: .75rem; }
 .raw summary { cursor: pointer; font-weight: 650; color: var(--harbor); }
 .raw-actions { display: flex; justify-content: flex-end; margin-block: .5rem; }
 .diagnose pre { background: var(--bg); padding: .75rem 1rem; border-radius: 14px; }
+
+/* Child photos */
+.avatar {
+  display: inline-grid; place-items: center; flex: none; border-radius: 50%; object-fit: cover;
+  background: var(--kid); color: #fff; font-weight: 800; box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--kid);
+}
+.file-btn:focus-within { outline: 3px solid var(--harbor); outline-offset: 3px; }
+.kid-name { display: flex; align-items: center; gap: .75rem; margin-block-end: .25rem; h2 { margin: 0; } }
+.kid-banner .kid-name h1 { margin: 0; }
+.kids li { flex-wrap: wrap; }

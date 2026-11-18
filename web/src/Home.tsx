@@ -6,7 +6,7 @@ import { deviceStatus } from './health.ts'
 import type { DeviceStatus } from './health.ts'
 import type { Child, Device, DeviceEvent } from './types.ts'
 import { addDays, byHour, clip, dailyMs, dayRange, fmtDuration, fmtTime, lateMs, screenTimeMs, spanRange, todayJerusalem, topBy, weekDates } from './usage.ts'
-import { Columns, DayClock, HomeArt, Skeleton } from './art.tsx'
+import { Avatar, Columns, DayClock, HomeArt, Skeleton } from './art.tsx'
 
 interface HomeData {
   children: Child[]
@@ -91,7 +91,7 @@ function ChildCard({ child, data }: { child: Child; data: HomeData }) {
       <a className="kid-head" href={`#/child/${child.id}`}>
         <DayClock minutes={byHour(apps, range)} totalMs={screenTimeMs(apps, range)} color={color} />
         <div>
-          <h2>{child.name}</h2>
+          <div className="kid-name"><Avatar child={child} size={40} /><h2>{child.name}</h2></div>
           <p className={`status status-${status}`}>{STATUS[status]}</p>
           <p className="muted">Last seen {lastSeen(devs)}</p>
         </div>

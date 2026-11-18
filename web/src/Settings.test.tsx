@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   addChild: vi.fn(),
   renameChild: vi.fn(),
   deleteChild: vi.fn(),
+  setChildPhoto: vi.fn(),
 }))
 vi.mock('./data.ts', () => m)
 
@@ -33,6 +34,18 @@ describe('Settings', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+  })
+
+  it('offers a photo and removes an existing one', async () => {
+    render(<Settings />)
+    expect(await screen.findByLabelText('Photo of Noa')).toBeTruthy()
+    expect(screen.getByText('Add photo')).toBeTruthy()
+    cleanup()
+    m.fetchChildren.mockResolvedValue([{ id: 'c1', name: 'Noa', color: '#f00', photo: 'data:image/jpeg;base64,AAAA' }])
+    m.setChildPhoto.mockResolvedValue(undefined)
+    render(<Settings />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove photo' }))
+    await waitFor(() => expect(m.setChildPhoto).toHaveBeenCalledWith('c1', null))
   })
 
   it('pairs a laptop and shows the token and install command', async () => {

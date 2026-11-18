@@ -143,3 +143,11 @@ export function Skeleton() {
     </div>
   )
 }
+
+/** The child's photo, or their initial on their color when there is none. */
+export function Avatar({ child, size = 48 }: { child: { name: string; photo: string | null; color: string | null }; size?: number }) {
+  const style = { '--kid': child.color ?? 'var(--harbor)', inlineSize: size, blockSize: size, fontSize: size * 0.45 } as CSSProperties
+  return child.photo
+    ? <img className="avatar" src={child.photo} alt="" style={style} />
+    : <span className="avatar" aria-hidden="true" style={style}>{child.name.trim().charAt(0).toUpperCase()}</span>
+}

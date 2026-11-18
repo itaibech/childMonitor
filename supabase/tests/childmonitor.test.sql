@@ -1,5 +1,5 @@
 begin;
-select plan(38);
+select plan(40);
 
 -- as admin
 set local test.admin = 'on';
@@ -104,6 +104,10 @@ set local test.admin = 'on';
 select is((select count(*)::int from storage.objects where bucket_id = 'childmonitor-client'), 1, 'admin can see client files');
 select lives_ok($$ insert into storage.objects(bucket_id, name) values ('childmonitor-client', 'y.zip') $$, 'admin can upload client files');
 reset role;
+
+-- child photo: only small inline images
+select throws_ok($$ update childmonitor.children set photo = 'javascript:alert(1)' $$, '23514', null, 'photo must be an image data URL');
+select lives_ok($$ update childmonitor.children set photo = 'data:image/jpeg;base64,AAAA' $$, 'photo accepts a small image');
 
 -- diagnostics: admin-only
 set local role authenticated;

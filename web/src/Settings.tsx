@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react'
+import type { ChangeEvent, CSSProperties } from 'react'
+import { Avatar } from './art.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import * as data from './data.ts'
 import { Command } from './Download.tsx'
@@ -100,6 +101,36 @@ function AddLaptop({ children, onAdded }: { children: Child[]; onAdded: () => vo
   )
 }
 
+const AVATAR_PX = 256
+
+/** Center-crops and shrinks a photo to a small square JPEG data URL (about 20 KB). */
+async function toAvatar(file: File): Promise<string> {
+  const img = await createImageBitmap(file).catch(() => { throw new Error('Could not read that photo. Use a JPEG or PNG.') })
+  const side = Math.min(img.width, img.height)
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = AVATAR_PX
+  canvas.getContext('2d')?.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, AVATAR_PX, AVATAR_PX)
+  img.close()
+  return canvas.toDataURL('image/jpeg', 0.85)
+}
+
+function PhotoButtons({ child, run }: { child: Child; run: (p: Promise<unknown>) => void }) {
+  const pick = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) run(toAvatar(file).then((photo) => data.setChildPhoto(child.id, photo)))
+  }
+  return (
+    <>
+      <label className="btn btn-quiet file-btn">
+        {child.photo ? 'Change photo' : 'Add photo'}
+        <input className="sr-only" type="file" accept="image/*" onChange={pick} aria-label={`Photo of ${child.name}`} />
+      </label>
+      {child.photo && <button className="btn btn-quiet" onClick={() => run(data.setChildPhoto(child.id, null))}>Remove photo</button>}
+    </>
+  )
+}
+
 function ChildrenSection({ children, onChange }: { children: Child[]; onChange: () => void }) {
   const [name, setName] = useState('')
   const [color, setColor] = useState('#e0a03a')
@@ -118,7 +149,8 @@ function ChildrenSection({ children, onChange }: { children: Child[]; onChange: 
       <ul className="kids">
         {children.map((c) => (
           <li key={c.id} style={{ '--kid': c.color ?? 'var(--harbor)' } as CSSProperties}>
-            <span className="swatch" aria-hidden="true" />{c.name}
+            <Avatar child={c} size={44} />{c.name}
+            <PhotoButtons child={c} run={run} />
             <button className="btn btn-quiet" onClick={() => rename(c)}>Rename</button>
             <button className="btn btn-danger" onClick={() => remove(c)}>Delete</button>
           </li>
