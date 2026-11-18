@@ -74,7 +74,7 @@ function Remove-DefenderExclusion {
 
 function Remove-AgentFiles {
     Get-Process -Name 'Helper' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -like "$InstallDir\\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+        Where-Object { $_.Path -like "$InstallDir\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
     foreach ($dir in $InstallDir, $DataDir) {
         if (Test-Path $dir) { Remove-Item -Path $dir -Recurse -Force }
