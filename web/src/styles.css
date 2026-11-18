@@ -32,7 +32,7 @@ code { font-size: .9em; background: var(--sky); padding: .1rem .35rem; border-ra
 
 /* Buttons and inputs */
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem; box-sizing: border-box;
   min-block-size: 2.75rem; padding: .55rem 1.1rem; border: 0; border-radius: 999px;
   background: var(--harbor); color: var(--harbor-ink); font: inherit; font-weight: 700; text-decoration: none; cursor: pointer;
   transition: background-color .15s, scale .15s;
@@ -165,8 +165,11 @@ input[type="checkbox"] { inline-size: 1.15rem; block-size: 1.15rem; }
 
 /* Settings */
 .kids { display: grid; gap: .5rem; padding: 0; margin: 0 0 1rem; list-style: none; }
-.kids li { display: flex; align-items: center; gap: .6rem; font-weight: 650; }
-.kids li .btn:first-of-type { margin-inline-start: auto; }
+.kids li {
+  display: grid; grid-template-columns: auto 1fr 9.5rem 9.5rem auto auto; align-items: center; gap: .6rem; font-weight: 650;
+  .btn { block-size: 2.75rem; }
+  @media (width < 720px) { display: flex; flex-wrap: wrap; }
+}
 .swatch { inline-size: 1.1rem; block-size: 1.1rem; border-radius: 50%; background: var(--kid); }
 .devices { display: grid; gap: 1rem; padding: 0; list-style: none; }
 .device-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-block-end: .75rem; }
@@ -324,4 +327,3 @@ details.panel[open] summary { margin-block-end: .75rem; }
 .file-btn:focus-within { outline: 3px solid var(--harbor); outline-offset: 3px; }
 .kid-name { display: flex; align-items: center; gap: .75rem; margin-block-end: .25rem; h2 { margin: 0; } }
 .kid-banner .kid-name h1 { margin: 0; }
-.kids li { flex-wrap: wrap; }

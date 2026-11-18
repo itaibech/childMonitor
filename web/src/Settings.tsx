@@ -126,7 +126,9 @@ function PhotoButtons({ child, run }: { child: Child; run: (p: Promise<unknown>)
         {child.photo ? 'Change photo' : 'Add photo'}
         <input className="sr-only" type="file" accept="image/*" onChange={pick} aria-label={`Photo of ${child.name}`} />
       </label>
-      {child.photo && <button className="btn btn-quiet" onClick={() => run(data.setChildPhoto(child.id, null))}>Remove photo</button>}
+      {child.photo
+        ? <button className="btn btn-quiet" onClick={() => run(data.setChildPhoto(child.id, null))}>Remove photo</button>
+        : <span aria-hidden="true" />}
     </>
   )
 }
@@ -149,7 +151,7 @@ function ChildrenSection({ children, onChange }: { children: Child[]; onChange: 
       <ul className="kids">
         {children.map((c) => (
           <li key={c.id} style={{ '--kid': c.color ?? 'var(--harbor)' } as CSSProperties}>
-            <Avatar child={c} size={44} />{c.name}
+            <Avatar child={c} size={44} /><span>{c.name}</span>
             <PhotoButtons child={c} run={run} />
             <button className="btn btn-quiet" onClick={() => rename(c)}>Rename</button>
             <button className="btn btn-danger" onClick={() => remove(c)}>Delete</button>
