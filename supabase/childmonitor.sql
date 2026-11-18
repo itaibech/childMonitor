@@ -92,7 +92,9 @@ create policy web_sessions_select on childmonitor.web_sessions for select using 
 drop policy if exists device_events_select on childmonitor.device_events;
 create policy device_events_select on childmonitor.device_events for select using (public.is_admin());
 
-revoke all on all tables in schema childmonitor from anon;
+revoke all on all tables in schema childmonitor from anon, authenticated;
+revoke all on all sequences in schema childmonitor from anon, authenticated;
+alter default privileges in schema childmonitor revoke all on tables from anon, authenticated;
 grant select, insert, update, delete on childmonitor.children, childmonitor.devices to authenticated;
 grant select on childmonitor.app_sessions, childmonitor.web_sessions, childmonitor.device_events to authenticated;
 grant select, update on childmonitor.device_users to authenticated;
@@ -104,7 +106,7 @@ declare tok text := encode(extensions.gen_random_bytes(32), 'hex');
 begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   insert into childmonitor.devices(child_id, name, token_hash)
-  values (child, device_name, encode(extensions.digest(tok::bytea, 'sha256'), 'hex'));
+  values (child, device_name, encode(extensions.digest(convert_to(tok, 'utf8'), 'sha256'), 'hex'));
   return tok;
 end $$;
 
@@ -114,7 +116,7 @@ declare tok text := encode(extensions.gen_random_bytes(32), 'hex');
 begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   update childmonitor.devices
-     set token_hash = encode(extensions.digest(tok::bytea, 'sha256'), 'hex')
+     set token_hash = encode(extensions.digest(convert_to(tok, 'utf8'), 'sha256'), 'hex')
    where id = device;
   if not found then raise exception 'unknown device'; end if;
   return tok;
@@ -155,7 +157,7 @@ returns jsonb language plpgsql security definer set search_path = '' as $$
 declare dev uuid; n int; sids jsonb;
 begin
   select id into dev from childmonitor.devices
-   where token_hash = encode(extensions.digest(token::bytea, 'sha256'), 'hex');
+   where token_hash = encode(extensions.digest(convert_to(token, 'utf8'), 'sha256'), 'hex');
   if dev is null then raise exception 'invalid token'; end if;
   batch := coalesce(batch, '{}'::jsonb);
 
