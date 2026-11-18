@@ -1,7 +1,9 @@
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase.ts'
-import type { Child } from './types.ts'
+import { ChildDay } from './ChildDay.tsx'
+import { Home } from './Home.tsx'
+import { Settings } from './Settings.tsx'
 
 const ADMIN = 'itai.bechor@gmail.com'
 
@@ -40,29 +42,9 @@ function useRoute(): Route {
   return parseRoute(hash)
 }
 
-function Home() {
-  const [children, setChildren] = useState<Child[] | null>(null)
-  const [denied, setDenied] = useState(false)
-  useEffect(() => {
-    supabase.from('children').select('*').then(({ data, error }) => {
-      if (error) setDenied(true)
-      else setChildren(data as Child[])
-    })
-  }, [])
-  if (denied) return <p role="alert">No access</p>
-  if (!children) return null
-  return (
-    <ul className="child-list">
-      {children.map((c) => (
-        <li key={c.id}><a href={`#/child/${c.id}`} style={{ '--c': c.color } as React.CSSProperties}>{c.name}</a></li>
-      ))}
-    </ul>
-  )
-}
-
 function Page({ route }: { route: Route }) {
-  if (route.page === 'settings') return <h2>Settings</h2>
-  if (route.page === 'child') return <h2>Child {route.id} {route.date ?? ''}</h2>
+  if (route.page === 'settings') return <Settings />
+  if (route.page === 'child') return <ChildDay id={route.id} date={route.date} />
   return <Home />
 }
 

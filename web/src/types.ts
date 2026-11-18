@@ -43,3 +43,12 @@ export interface DeviceEvent {
   detail: Record<string, unknown> | null
   at: string
 }
+
+export interface DeviceUser {
+  device_id: string
+  sid: string
+  win_user: string
+  is_admin: boolean
+  supervised: boolean
+  first_seen_at: string
+}

@@ -105,3 +105,30 @@ export function topBy<T>(
   for (const r of rows) totals.set(key(r), (totals.get(key(r)) ?? 0) + r.ms)
   return [...totals.entries()].map(([k, ms]) => ({ key: k, ms })).sort((a, b) => b.ms - a.ms)
 }
+
+const timeFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const dateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+
+/** HH:MM in Asia/Jerusalem. */
+export function fmtTime(t: Date | string | number): string {
+  return timeFmt.format(new Date(t))
+}
+
+export function todayJerusalem(now: Date = new Date()): string {
+  return dateFmt.format(now)
+}
+
+/** The date if it is a real YYYY-MM-DD, else today in Jerusalem. */
+export function validDate(date: string | null): string {
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split('-').map(Number)
+    const check = new Date(Date.UTC(y, m - 1, d))
+    if (check.getUTCFullYear() === y && check.getUTCMonth() === m - 1 && check.getUTCDate() === d) return date
+  }
+  return todayJerusalem()
+}
+
+export function fmtDuration(ms: number): string {
+  const min = Math.round(ms / MIN_MS)
+  return min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `${min}m`
+}
