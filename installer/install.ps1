@@ -20,8 +20,11 @@ $ErrorActionPreference = 'Stop'
 
 $ServiceName = 'ChildMonitorSvc'
 $HostName = 'com.itaibech.childmonitor'
-$InstallDir = Join-Path $env:ProgramFiles 'ChildMonitor'
-$DataDir = Join-Path $env:ProgramData 'ChildMonitor'
+if (-not [Environment]::Is64BitProcess) { throw 'Run from 64-bit PowerShell' }
+
+$InstallDir = 'C:\Program Files\ChildMonitor'
+$DataDir = 'C:\ProgramData\ChildMonitor'
+$StateKey = 'HKLM:\SOFTWARE\ChildMonitor'
 $SourceDir = Join-Path $PSScriptRoot 'out'
 $SupabaseUrl = 'https://hyeslwlewvvjiyizoduf.supabase.co'
 # Publishable key: public by design, RLS protects the data.
@@ -49,7 +52,8 @@ function Stop-AgentIfRunning {
         Stop-Service -Name $ServiceName -Force
         $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
     }
-    Get-Process -Name 'Helper' -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process -Name 'Helper' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -like "$InstallDir\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 function Copy-AgentFiles {
@@ -77,11 +81,13 @@ function Install-AgentService {
     $exists = [bool](Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)
     $verb = 'create'
     if ($exists) { $verb = 'config' }
-    # sc.exe needs "name= value" as two args (space after '='); the inner quotes protect the space in "Program Files".
-    Invoke-Sc @($verb, $ServiceName, 'binPath=', $binPath, 'start=', 'auto', 'DisplayName=', 'Child Monitor')
+    # sc.exe strips embedded quotes under PS 5.1, so pass a plain binPath and then set the quoted ImagePath in the registry.
+    Invoke-Sc @($verb, $ServiceName, 'binPath=', $exe, 'start=', 'auto', 'DisplayName=', 'Child Monitor')
+    $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
+    Set-ItemProperty -Path $svcKey -Name ImagePath -Value $binPath
     Invoke-Sc @('failure', $ServiceName, 'reset=', '0', 'actions=', 'restart/5000/restart/5000/restart/5000')
     Invoke-Sc @('sdset', $ServiceName, $ServiceSddl)
-    $image = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName").ImagePath
+    $image = (Get-ItemProperty $svcKey).ImagePath
     if ($image -ne $binPath) { throw "Service ImagePath mismatch: $image" }
 }
 
@@ -96,14 +102,39 @@ function Write-NativeHost {
     [System.IO.File]::WriteAllText($manifestPath, $manifest, (New-Object System.Text.UTF8Encoding($false)))
     foreach ($base in 'HKLM:\SOFTWARE\Google\Chrome\NativeMessagingHosts', 'HKLM:\SOFTWARE\Microsoft\Edge\NativeMessagingHosts') {
         $key = Join-Path $base $HostName
-        New-Item -Path $key -Force | Out-Null
+        New-Key $key
         Set-ItemProperty -Path $key -Name '(default)' -Value $manifestPath
     }
 }
 
+# New-Item -Force on an existing key deletes it in PS 5.1, so only create when missing.
+function New-Key([string]$Path) {
+    if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
+}
+
 function Set-PolicyValue([string]$Path, [string]$Name, $Value, [string]$Type) {
-    New-Item -Path $Path -Force | Out-Null
+    New-Key $Path
     New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
+}
+
+# Reuse the slot already holding this extension, else the next free integer name.
+function Get-ForcelistSlot([string]$List, [string]$ExtId) {
+    if (-not (Test-Path $List)) { return '1' }
+    $props = (Get-Item -Path $List).Property
+    $max = 0
+    foreach ($n in $props) {
+        $v = [string](Get-ItemProperty -Path $List -Name $n).$n
+        if ($v.StartsWith("$ExtId;")) { return $n }
+        $i = 0
+        if ([int]::TryParse($n, [ref]$i) -and $i -gt $max) { $max = $i }
+    }
+    return [string]($max + 1)
+}
+
+function Save-ExtIds {
+    New-Key $StateKey
+    Set-ItemProperty -Path $StateKey -Name ChromeExtId -Value $ChromeExtId
+    Set-ItemProperty -Path $StateKey -Name EdgeExtId -Value $EdgeExtId
 }
 
 function Set-BrowserPolicy([string]$Root, [string]$ExtId, [string]$UpdateUrl, [hashtable]$Dwords) {
@@ -111,7 +142,8 @@ function Set-BrowserPolicy([string]$Root, [string]$ExtId, [string]$UpdateUrl, [h
     # DnsOverHttpsMode is a string policy, not a DWord.
     Set-PolicyValue $Root 'DnsOverHttpsMode' 'off' 'String'
     if ($ExtId) {
-        Set-PolicyValue "$Root\ExtensionInstallForcelist" '1' "$ExtId;$UpdateUrl" 'String'
+        $list = "$Root\ExtensionInstallForcelist"
+        Set-PolicyValue $list (Get-ForcelistSlot $list $ExtId) "$ExtId;$UpdateUrl" 'String'
     }
 }
 
@@ -144,12 +176,13 @@ function Show-Warnings {
 
 Show-Warnings
 Stop-AgentIfRunning
+Add-DefenderExclusion
 Copy-AgentFiles
 Write-AgentConfig
 Install-AgentService
 Write-NativeHost
 Set-MachinePolicies
 Set-AdapterDns
-Add-DefenderExclusion
+Save-ExtIds
 Start-Service -Name $ServiceName
 Get-Service -Name $ServiceName | Format-Table Name, Status, StartType -AutoSize

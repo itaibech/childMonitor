@@ -16,7 +16,7 @@ Installed: `C:\Program Files\ChildMonitor` (`ChildMonitorService.exe`, `Helper.e
 native host registry keys, DNS `1.1.1.3`/`1.0.0.3`/`2606:4700:4700::1113`/`2606:4700:4700::1003` on up physical adapters,
 Defender exclusion for the install dir.
 
-Phase-4 hardening (not done): Windows-level DoH settings are left untouched; only the browsers' `DnsOverHttpsMode=off` policy is set.
+Phase-4 hardening (not done): Windows OS-level DoH settings are left untouched (only the browsers' `DnsOverHttpsMode=off` policy is set), and adapters that come up after install (new USB/Wi-Fi adapters) are not covered. Re-run `install.ps1` to apply DNS to new adapters.
 
 ## Manual verification (spare PC, standard user `testkid`)
 

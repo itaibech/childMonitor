@@ -5,12 +5,13 @@ $ErrorActionPreference = 'Stop'
 
 $ServiceName = 'ChildMonitorSvc'
 $HostName = 'com.itaibech.childmonitor'
-$InstallDir = Join-Path $env:ProgramFiles 'ChildMonitor'
-$DataDir = Join-Path $env:ProgramData 'ChildMonitor'
+if (-not [Environment]::Is64BitProcess) { throw 'Run from 64-bit PowerShell' }
+
+$InstallDir = 'C:\Program Files\ChildMonitor'
+$DataDir = 'C:\ProgramData\ChildMonitor'
+$StateKey = 'HKLM:\SOFTWARE\ChildMonitor'
 $ChromeRoot = 'HKLM:\SOFTWARE\Policies\Google\Chrome'
 $EdgeRoot = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
-$ChromeUpdateUrl = 'https://clients2.google.com/service/update2/crx'
-$EdgeUpdateUrl = 'https://edge.microsoft.com/extensionwebstorebase/v1/crx'
 
 function Remove-AgentService {
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -27,13 +28,20 @@ function Remove-PolicyValue([string]$Path, [string]$Name) {
     if (Test-Path $Path) { Remove-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue }
 }
 
-function Remove-Forcelist([string]$Root, [string]$UpdateUrl) {
+function Get-RecordedId([string]$Name) {
+    if (-not (Test-Path $StateKey)) { return '' }
+    $p = Get-ItemProperty -Path $StateKey
+    if ($p.PSObject.Properties.Name -contains $Name) { return [string]$p.$Name }
+    return ''
+}
+
+# Remove only forcelist values whose data starts with the id we recorded at install.
+function Remove-Forcelist([string]$Root, [string]$ExtId) {
     $key = "$Root\ExtensionInstallForcelist"
-    if (-not (Test-Path $key)) { return }
-    $item = Get-ItemProperty -Path $key
-    # Only remove value "1" if it is ours (carries the store update URL).
-    if (($item.PSObject.Properties.Name -contains '1') -and ($item.'1' -like "*;$UpdateUrl")) {
-        Remove-ItemProperty -Path $key -Name '1'
+    if ((-not $ExtId) -or (-not (Test-Path $key))) { return }
+    foreach ($n in (Get-Item -Path $key).Property) {
+        $v = [string](Get-ItemProperty -Path $key -Name $n).$n
+        if ($v.StartsWith("$ExtId;")) { Remove-ItemProperty -Path $key -Name $n }
     }
 }
 
@@ -41,8 +49,9 @@ function Remove-MachinePolicies {
     $common = 'ForceGoogleSafeSearch', 'ForceYouTubeRestrict', 'DnsOverHttpsMode'
     foreach ($n in ($common + 'IncognitoModeAvailability')) { Remove-PolicyValue $ChromeRoot $n }
     foreach ($n in ($common + 'InPrivateModeAvailability', 'ForceBingSafeSearch')) { Remove-PolicyValue $EdgeRoot $n }
-    Remove-Forcelist $ChromeRoot $ChromeUpdateUrl
-    Remove-Forcelist $EdgeRoot $EdgeUpdateUrl
+    Remove-Forcelist $ChromeRoot (Get-RecordedId 'ChromeExtId')
+    Remove-Forcelist $EdgeRoot (Get-RecordedId 'EdgeExtId')
+    if (Test-Path $StateKey) { Remove-Item -Path $StateKey -Recurse -Force }
 }
 
 function Remove-NativeHost {
@@ -64,7 +73,8 @@ function Remove-DefenderExclusion {
 }
 
 function Remove-AgentFiles {
-    Get-Process -Name 'Helper' -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process -Name 'Helper' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -like "$InstallDir\\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
     foreach ($dir in $InstallDir, $DataDir) {
         if (Test-Path $dir) { Remove-Item -Path $dir -Recurse -Force }
