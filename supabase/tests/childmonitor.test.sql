@@ -1,5 +1,5 @@
 begin;
-select plan(35);
+select plan(38);
 
 -- as admin
 set local test.admin = 'on';
@@ -103,6 +103,16 @@ select throws_ok($$ insert into storage.objects(bucket_id, name) values ('childm
 set local test.admin = 'on';
 select is((select count(*)::int from storage.objects where bucket_id = 'childmonitor-client'), 1, 'admin can see client files');
 select lives_ok($$ insert into storage.objects(bucket_id, name) values ('childmonitor-client', 'y.zip') $$, 'admin can upload client files');
+reset role;
+
+-- diagnostics: admin-only
+set local role authenticated;
+set local test.admin = 'off';
+select throws_ok($$ insert into childmonitor.diagnostics(body) values ('x') $$, '42501', null, 'non-admin cannot send diagnostics');
+set local test.admin = 'on';
+select lives_ok($$ insert into childmonitor.diagnostics(body) values ('report') $$, 'admin can send diagnostics');
+set local test.admin = 'off';
+select is((select count(*)::int from childmonitor.diagnostics), 0, 'non-admin cannot read diagnostics');
 reset role;
 
 select * from finish();

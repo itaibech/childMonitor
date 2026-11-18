@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { DownloadArt } from './art.tsx'
 import * as data from './data.ts'
-import type { ClientFile } from './data.ts'
+import type { ClientFile, Diagnostic } from './data.ts'
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -89,6 +89,60 @@ function Upload({ onDone }: { onDone: () => void }) {
   )
 }
 
+// Gathers service state, files, recent errors and a short foreground run, then copies it all. Never reads config.json.
+const DIAGNOSE = String.raw`& {
+'== Service'; Get-Service ChildMonitorSvc -ErrorAction SilentlyContinue | Format-List Name,Status,StartType
+'== Program files'; Get-ChildItem 'C:\Program Files\ChildMonitor' -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count
+'== Data'; Get-ChildItem C:\ProgramData\ChildMonitor -ErrorAction SilentlyContinue | Format-Table Name,Length,LastWriteTime
+'== Service manager'; Get-WinEvent -LogName System -MaxEvents 400 | Where-Object { $_.ProviderName -eq 'Service Control Manager' -and $_.Message -like '*Child Monitor*' } | Select-Object -First 10 | Format-List TimeCreated,Message
+'== App errors'; Get-WinEvent -LogName Application -MaxEvents 400 | Where-Object { $_.ProviderName -in 'ChildMonitorSvc','.NET Runtime','Application Error' } | Select-Object -First 15 | Format-List TimeCreated,ProviderName,Message
+'== Network'; Test-NetConnection hyeslwlewvvjiyizoduf.supabase.co -Port 443 | Format-List TcpTestSucceeded,RemoteAddress
+'== Foreground run'; if ((Get-Service ChildMonitorSvc -ErrorAction SilentlyContinue).Status -ne 'Running') {
+  $p = Start-Process 'C:\Program Files\ChildMonitor\ChildMonitorService.exe' -PassThru -WindowStyle Hidden -RedirectStandardError "$env:TEMP\cm-err.txt" -RedirectStandardOutput "$env:TEMP\cm-out.txt"
+  Start-Sleep 10; if ($p.HasExited) { "exited with code $($p.ExitCode)" } else { Stop-Process $p -Force; 'still running after 10 s' }
+  Get-Content "$env:TEMP\cm-err.txt","$env:TEMP\cm-out.txt" -ErrorAction SilentlyContinue } else { 'skipped: service is running' }
+} *>&1 | Out-String -Width 200 | Set-Clipboard; 'Copied. Paste it on the Diagnostics page.'`
+
+export function Diagnose() {
+  const [reports, setReports] = useState<Diagnostic[]>([])
+  const [status, setStatus] = useState('')
+  const load = () => data.fetchDiagnostics().then(setReports, (e: unknown) => setStatus(message(e)))
+  useEffect(() => { void load() }, [])
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const form = e.currentTarget
+    const body = String(new FormData(form).get('report') ?? '').trim()
+    if (!body) return
+    try {
+      await data.sendDiagnostics(body)
+      form.reset()
+      setStatus('Sent.')
+      await load()
+    } catch (err) {
+      setStatus(`Could not send: ${message(err)}`)
+    }
+  }
+  return (
+    <div className="page diagnose">
+      <h1>Diagnostics</h1>
+      <p>If a laptop isn't reporting, paste this into an administrator PowerShell on it. It copies a report to the clipboard; it never includes the install code.</p>
+      <Command text={DIAGNOSE} what="diagnostics command" />
+      <form onSubmit={(e) => void submit(e)}>
+        <label htmlFor="report">Report</label>
+        <textarea id="report" name="report" required spellCheck={false} placeholder="Paste the report here" />
+        <button className="btn" type="submit">Send report</button>
+      </form>
+      <p role="status">{status}</p>
+      {reports.map((r) => (
+        <details key={r.id}>
+          <summary>Report from {new Date(r.created_at).toLocaleString('en-GB')}</summary>
+          <pre>{r.body}</pre>
+        </details>
+      ))}
+    </div>
+  )
+}
+
 const FOLDER = 'cd "$env:USERPROFILE\\Downloads\\ChildMonitor"'
 const UNBLOCK = 'Get-ChildItem -Recurse | Unblock-File'
 const INSTALL = 'powershell -ExecutionPolicy Bypass -File .\\install.ps1 -Token <install code>'
@@ -110,7 +164,7 @@ function Steps() {
         <Command text={INSTALL} what="install command" />
         <p className="muted">Replace <code>&lt;install code&gt;</code> with the code from step 2.</p></li>
       <li><h3>Check it works</h3>
-        <p>The last lines show <code>ChildMonitorSvc</code> as Running. Within two minutes the laptop's Windows accounts appear in Settings, where you choose who is supervised.</p></li>
+        <p>The last lines show <code>ChildMonitorSvc</code> as Running. Within two minutes the laptop's Windows accounts appear in Settings, where you choose who is supervised. If not, see <a href="#/diagnose">Diagnostics</a>.</p></li>
     </ol>
   )
 }

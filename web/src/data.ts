@@ -147,3 +147,17 @@ export async function clientDownloadUrl(): Promise<string> {
 export async function uploadClient(file: Blob): Promise<void> {
   check(await supabase.storage.from(CLIENT_BUCKET).upload(CLIENT_FILE, file, { upsert: true, contentType: 'application/zip' }))
 }
+
+export interface Diagnostic {
+  id: number
+  created_at: string
+  body: string
+}
+
+export async function fetchDiagnostics(): Promise<Diagnostic[]> {
+  return ok(await supabase.from('diagnostics').select('*').order('created_at', { ascending: false }).limit(5))
+}
+
+export async function sendDiagnostics(body: string): Promise<void> {
+  check(await supabase.from('diagnostics').insert({ body }))
+}

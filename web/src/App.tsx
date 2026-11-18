@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase.ts'
 import { HomeArt, Logo } from './art.tsx'
 import { ChildDay } from './ChildDay.tsx'
-import { Download } from './Download.tsx'
+import { Diagnose, Download } from './Download.tsx'
 import { Home } from './Home.tsx'
 import { Settings } from './Settings.tsx'
 
@@ -14,12 +14,14 @@ export type Route =
   | { page: 'child'; id: string; date: string | null }
   | { page: 'settings' }
   | { page: 'download' }
+  | { page: 'diagnose' }
 
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#\/?/, '').split('?')
   const parts = path.split('/')
   if (parts[0] === 'settings') return { page: 'settings' }
   if (parts[0] === 'download') return { page: 'download' }
+  if (parts[0] === 'diagnose') return { page: 'diagnose' }
   if (parts[0] === 'child' && parts[1]) {
     return { page: 'child', id: parts[1], date: new URLSearchParams(query).get('date') }
   }
@@ -55,6 +57,7 @@ function Nav({ page }: { page: Route['page'] }) {
         {link('#/', 'Today', page === 'home' || page === 'child')}
         {link('#/download', 'Install', page === 'download')}
         {link('#/settings', 'Settings', page === 'settings')}
+        {link('#/diagnose', 'Diagnostics', page === 'diagnose')}
       </nav>
       <button className="btn btn-quiet" onClick={() => void supabase.auth.signOut()}>Sign out</button>
     </header>
@@ -64,6 +67,7 @@ function Nav({ page }: { page: Route['page'] }) {
 function Page({ route }: { route: Route }) {
   if (route.page === 'settings') return <Settings />
   if (route.page === 'download') return <Download />
+  if (route.page === 'diagnose') return <Diagnose />
   if (route.page === 'child') return <ChildDay id={route.id} date={route.date} />
   return <Home />
 }

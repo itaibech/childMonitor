@@ -220,3 +220,15 @@ drop policy if exists childmonitor_client_admin on storage.objects;
 create policy childmonitor_client_admin on storage.objects for all to authenticated
   using (bucket_id = 'childmonitor-client' and public.is_admin())
   with check (bucket_id = 'childmonitor-client' and public.is_admin());
+
+-- Diagnostics pasted from a laptop on the Install page, for troubleshooting. Admin-only.
+create table if not exists childmonitor.diagnostics (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  body text not null check (length(body) <= 200000)
+);
+alter table childmonitor.diagnostics enable row level security;
+drop policy if exists diagnostics_admin on childmonitor.diagnostics;
+create policy diagnostics_admin on childmonitor.diagnostics for all
+  using (public.is_admin()) with check (public.is_admin());
+grant select, insert, delete on childmonitor.diagnostics to authenticated;
