@@ -1,9 +1,10 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getSession, select } = vi.hoisted(() => ({
+const { getSession, select, signInWithPassword } = vi.hoisted(() => ({
   getSession: vi.fn(),
   select: vi.fn(),
+  signInWithPassword: vi.fn(),
 }))
 
 vi.mock('./supabase.ts', () => ({
@@ -12,6 +13,7 @@ vi.mock('./supabase.ts', () => ({
       getSession,
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: vi.fn() } } }),
       signInWithOAuth: vi.fn(),
+      signInWithPassword,
       signOut: vi.fn(),
     },
     from: () => ({ select }),
@@ -36,5 +38,27 @@ describe('App auth gate', () => {
     getSession.mockResolvedValue({ data: { session: { user: { email: 'someone@x.com' } } } })
     render(<App />)
     expect(await screen.findByText(/No access/)).toBeTruthy()
+  })
+
+  it('signs in with email and password and shows the error on failure', async () => {
+    getSession.mockResolvedValue({ data: { session: null } })
+    signInWithPassword.mockResolvedValue({ error: { message: 'Invalid login credentials' } })
+    render(<App />)
+    const email = await screen.findByLabelText('Email')
+    expect(email.getAttribute('autocomplete')).toBe('username')
+    expect(screen.getByLabelText('Password').getAttribute('autocomplete')).toBe('current-password')
+    fireEvent.change(email, { target: { value: 'a@b.c' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Invalid login credentials')
+    expect(signInWithPassword).toHaveBeenCalledWith({ email: 'a@b.c', password: 'pw' })
+  })
+
+  it('show password toggles the input type', async () => {
+    getSession.mockResolvedValue({ data: { session: null } })
+    render(<App />)
+    const pw = await screen.findByLabelText('Password')
+    fireEvent.click(screen.getByLabelText('Show password'))
+    expect(pw.getAttribute('type')).toBe('text')
   })
 })

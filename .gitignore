@@ -3,6 +3,6 @@ web/node_modules
 web/dist
 agent/**/bin
 agent/**/obj
-extension/node_modules
-extension/dist
 installer/out
+installer/dist
+web/tsconfig.tsbuildinfo

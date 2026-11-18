@@ -122,3 +122,28 @@ export async function fetchDeviceUsers(deviceId: string): Promise<DeviceUser[]> 
 export async function setSupervised(deviceId: string, sid: string, on: boolean): Promise<void> {
   check(await supabase.from('device_users').update({ supervised: on }).eq('device_id', deviceId).eq('sid', sid))
 }
+
+// Windows client zip in the private storage bucket (admin-only by RLS; see supabase/childmonitor.sql).
+const CLIENT_BUCKET = 'childmonitor-client'
+export const CLIENT_FILE = 'ChildMonitor.zip'
+
+export interface ClientFile {
+  size: number
+  updatedAt: string
+}
+
+export async function fetchClientFile(): Promise<ClientFile | null> {
+  const files = ok(await supabase.storage.from(CLIENT_BUCKET).list('', { search: CLIENT_FILE }))
+  const f = files.find((o) => o.name === CLIENT_FILE)
+  if (!f) return null
+  return { size: Number(f.metadata?.size ?? 0), updatedAt: f.updated_at ?? f.created_at ?? '' }
+}
+
+/** Short-lived link (5 min) that downloads the zip; only the admin can create one. */
+export async function clientDownloadUrl(): Promise<string> {
+  return ok(await supabase.storage.from(CLIENT_BUCKET).createSignedUrl(CLIENT_FILE, 300, { download: true })).signedUrl
+}
+
+export async function uploadClient(file: Blob): Promise<void> {
+  check(await supabase.storage.from(CLIENT_BUCKET).upload(CLIENT_FILE, file, { upsert: true, contentType: 'application/zip' }))
+}

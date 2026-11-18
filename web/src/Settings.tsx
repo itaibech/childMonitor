@@ -1,6 +1,7 @@
+import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import * as data from './data.ts'
-import { CHROME_EXT_ID, EDGE_EXT_ID } from './extensionIds.ts'
+import { Command } from './Download.tsx'
 import type { Child, Device, DeviceUser } from './types.ts'
 
 function useAsync<T>(fn: () => Promise<T>): { value: T | null; error: string | null; reload: () => void } {
@@ -15,17 +16,16 @@ function useAsync<T>(fn: () => Promise<T>): { value: T | null; error: string | n
 }
 
 function ShowToken({ token }: { token: string }) {
-  const chrome = CHROME_EXT_ID || '<CHROME_EXT_ID>'
-  const edge = EDGE_EXT_ID || '<EDGE_EXT_ID>'
   return (
     <div className="token" role="status">
-      <p>Run on the laptop as administrator:</p>
-      <code>{`powershell -ExecutionPolicy Bypass -File install.ps1 -Token ${token} -ChromeExtId ${chrome} -EdgeExtId ${edge}`}</code>
-      {(!CHROME_EXT_ID || !EDGE_EXT_ID) && <p role="alert">Extension IDs not set yet — web tracking won't install</p>}
-      <p className="muted">This token is shown only once. Copy it now.</p>
+      <p><b>Install code ready.</b> It is shown only once, so copy it now. Follow the steps on the <a href="#/download">Install</a> page and run:</p>
+      <Command text={`powershell -ExecutionPolicy Bypass -File .\\install.ps1 -Token ${token}`} what="install command" />
     </div>
   )
 }
+
+// ponytail: native switch where supported (Safari); a plain checkbox elsewhere, no polyfill.
+const SWITCH: Record<string, string> = { switch: '' }
 
 function Accounts({ deviceId }: { deviceId: string }) {
   const { value, error, reload } = useAsync<DeviceUser[]>(() => data.fetchDeviceUsers(deviceId))
@@ -35,13 +35,14 @@ function Accounts({ deviceId }: { deviceId: string }) {
   if (value.length === 0) return <p className="muted">No accounts reported yet.</p>
   return (
     <table>
+      <thead><tr><th scope="col">Windows account</th><th scope="col">Supervised</th></tr></thead>
       <tbody>
         {value.map((u) => (
           <tr key={u.sid}>
-            <td>{u.win_user} {u.is_admin && <span className="badge">admin</span>}</td>
+            <th scope="row">{u.win_user} {u.is_admin && <span className="badge">admin</span>}</th>
             <td>
               <label>
-                <input type="checkbox" aria-label={`Supervised ${u.win_user}`} checked={u.supervised} onChange={() => toggle(u)} /> Supervised
+                <input type="checkbox" {...SWITCH} aria-label={`Supervised ${u.win_user}`} checked={u.supervised} onChange={() => toggle(u)} /> Supervised
               </label>
             </td>
           </tr>
@@ -60,10 +61,14 @@ function DeviceRow({ device, childName, onChange }: { device: Device; childName:
     if (confirm(`Revoke and delete ${device.name}?`)) run(data.deleteDevice(device.id).then(onChange))
   }
   return (
-    <li className="card">
-      <h4>{device.name} <span className="muted">({childName})</span></h4>
-      <button className="btn" onClick={reset}>Reset token</button>{' '}
-      <button className="btn" onClick={remove}>Revoke</button>
+    <li className="panel device">
+      <div className="device-head">
+        <h3>{device.name} <span className="muted">for {childName}</span></h3>
+        <div className="actions">
+          <button className="btn btn-quiet" onClick={reset}>New install code</button>
+          <button className="btn btn-danger" onClick={remove}>Remove laptop</button>
+        </div>
+      </div>
       {error && <p role="alert">{error}</p>}
       {token && <ShowToken token={token} />}
       <Accounts deviceId={device.id} />
@@ -79,14 +84,16 @@ function AddLaptop({ children, onAdded }: { children: Child[]; onAdded: () => vo
   const add = () =>
     data.createDevice(childId, name.trim()).then((t) => { setToken(t); setName(''); onAdded() }, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   return (
-    <section>
-      <h3>Add laptop</h3>
+    <section className="panel">
+      <h2>Add a laptop</h2>
+      <div className="row">
       <label>Child <select value={childId} onChange={(e) => setChildId(e.target.value)}>
         <option value="">Choose…</option>
         {children.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select></label>{' '}
       <label>Laptop name <input value={name} onChange={(e) => setName(e.target.value)} /></label>{' '}
       <button className="btn" disabled={!childId || !name.trim()} onClick={add}>Add laptop</button>
+      </div>
       {error && <p role="alert">{error}</p>}
       {token && <ShowToken token={token} />}
     </section>
@@ -95,7 +102,7 @@ function AddLaptop({ children, onAdded }: { children: Child[]; onAdded: () => vo
 
 function ChildrenSection({ children, onChange }: { children: Child[]; onChange: () => void }) {
   const [name, setName] = useState('')
-  const [color, setColor] = useState('#4f46e5')
+  const [color, setColor] = useState('#e0a03a')
   const [error, setError] = useState<string | null>(null)
   const run = (p: Promise<unknown>) => p.then(onChange, (e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   const rename = (c: Child) => {
@@ -106,19 +113,22 @@ function ChildrenSection({ children, onChange }: { children: Child[]; onChange: 
     if (confirm(`Delete ${c.name} and all their data?`)) run(data.deleteChild(c.id))
   }
   return (
-    <section>
-      <h3>Children</h3>
-      <ul>
+    <section className="panel">
+      <h2>Children</h2>
+      <ul className="kids">
         {children.map((c) => (
-          <li key={c.id}>{c.name}{' '}
-            <button onClick={() => rename(c)}>Rename</button>{' '}
-            <button onClick={() => remove(c)}>Delete</button>
+          <li key={c.id} style={{ '--kid': c.color ?? 'var(--harbor)' } as CSSProperties}>
+            <span className="swatch" aria-hidden="true" />{c.name}
+            <button className="btn btn-quiet" onClick={() => rename(c)}>Rename</button>
+            <button className="btn btn-danger" onClick={() => remove(c)}>Delete</button>
           </li>
         ))}
       </ul>
-      <input aria-label="New child name" value={name} onChange={(e) => setName(e.target.value)} />{' '}
+      <div className="row">
+      <input aria-label="New child name" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />{' '}
       <input type="color" aria-label="Color" value={color} onChange={(e) => setColor(e.target.value)} />{' '}
       <button className="btn" disabled={!name.trim()} onClick={() => run(data.addChild(name.trim(), color).then(() => setName('')))}>Add child</button>
+      </div>
       {error && <p role="alert">{error}</p>}
     </section>
   )
@@ -129,16 +139,17 @@ export function Settings() {
   const devs = useAsync<Device[]>(data.fetchDevices)
   const error = kids.error ?? devs.error
   if (error) return <p role="alert">Could not load data: {error}</p>
-  if (!kids.value || !devs.value) return <p>Loading…</p>
+  if (!kids.value || !devs.value) return <p className="muted">Loading…</p>
   const reload = () => { kids.reload(); devs.reload() }
   const nameOf = (id: string) => kids.value?.find((c) => c.id === id)?.name ?? 'unassigned'
   return (
-    <div>
-      <h2>Settings</h2>
+    <div className="page">
+      <h1>Settings</h1>
       <ChildrenSection children={kids.value} onChange={reload} />
       <AddLaptop children={kids.value} onAdded={devs.reload} />
-      <h3>Laptops</h3>
-      <ul className="child-list">
+      <h2>Laptops</h2>
+      {devs.value.length === 0 && <p className="muted">No laptops yet. Add one above, then follow the <a href="#/download">Install</a> steps.</p>}
+      <ul className="devices">
         {devs.value.map((d) => <DeviceRow key={d.id} device={d} childName={nameOf(d.child_id)} onChange={devs.reload} />)}
       </ul>
     </div>

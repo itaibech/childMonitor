@@ -1,7 +1,9 @@
 import type { Session } from '@supabase/supabase-js'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase.ts'
+import { HomeArt, Logo } from './art.tsx'
 import { ChildDay } from './ChildDay.tsx'
+import { Download } from './Download.tsx'
 import { Home } from './Home.tsx'
 import { Settings } from './Settings.tsx'
 
@@ -11,11 +13,13 @@ export type Route =
   | { page: 'home' }
   | { page: 'child'; id: string; date: string | null }
   | { page: 'settings' }
+  | { page: 'download' }
 
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#\/?/, '').split('?')
   const parts = path.split('/')
   if (parts[0] === 'settings') return { page: 'settings' }
+  if (parts[0] === 'download') return { page: 'download' }
   if (parts[0] === 'child' && parts[1]) {
     return { page: 'child', id: parts[1], date: new URLSearchParams(query).get('date') }
   }
@@ -42,29 +46,78 @@ function useRoute(): Route {
   return parseRoute(hash)
 }
 
+function Nav({ page }: { page: Route['page'] }) {
+  const link = (href: string, label: string, on: boolean) => <a href={href} aria-current={on ? 'page' : undefined}>{label}</a>
+  return (
+    <header className="topbar">
+      <nav aria-label="Main">
+        <a className="brand" href="#/"><Logo />Child Monitor</a>
+        {link('#/', 'Today', page === 'home' || page === 'child')}
+        {link('#/download', 'Install', page === 'download')}
+        {link('#/settings', 'Settings', page === 'settings')}
+      </nav>
+      <button className="btn btn-quiet" onClick={() => void supabase.auth.signOut()}>Sign out</button>
+    </header>
+  )
+}
+
 function Page({ route }: { route: Route }) {
   if (route.page === 'settings') return <Settings />
+  if (route.page === 'download') return <Download />
   if (route.page === 'child') return <ChildDay id={route.id} date={route.date} />
   return <Home />
+}
+
+function SignIn() {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [show, setShow] = useState(false)
+  const google = () =>
+    supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } })
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    setBusy(true)
+    const { error } = await supabase.auth.signInWithPassword({ email: String(form.get('email')), password: String(form.get('password')) })
+    setBusy(false)
+    setError(error?.message ?? '')
+  }
+  return (
+    <main className="signin">
+      <HomeArt />
+      <h1>Child Monitor</h1>
+      <p className="lede">See how the children spend their time on their laptops.</p>
+      <form onSubmit={(e) => void submit(e)}>
+        <label htmlFor="email">Email</label>
+        <input id="email" name="email" type="email" autoComplete="username" spellCheck={false} required />
+        <label htmlFor="password">Password</label>
+        <input id="password" name="password" type={show ? 'text' : 'password'} autoComplete="current-password" enterKeyHint="done" required />
+        <label><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show password</label>
+        {error && <p role="alert">{error}</p>}
+        <button className="btn" type="submit" disabled={busy}>Sign in</button>
+      </form>
+      <button className="btn btn-quiet" onClick={() => void google()}>Sign in with Google</button>
+    </main>
+  )
 }
 
 export function App() {
   const session = useSession()
   const route = useRoute()
-  const signIn = () =>
-    supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } })
   if (session === undefined) return null
-  if (!session) return <main className="shell"><button className="btn" onClick={signIn}>Sign in with Google</button></main>
+  if (!session) return <SignIn />
   if (session.user.email !== ADMIN) {
-    return <main className="shell"><p role="alert">No access: {session.user.email}</p></main>
+    return (
+      <main className="signin">
+        <p role="alert">No access for {session.user.email}. Sign in with the parent account.</p>
+        <button className="btn btn-quiet" onClick={() => void supabase.auth.signOut()}>Sign out</button>
+      </main>
+    )
   }
   return (
-    <main className="shell">
-      <nav className="nav">
-        <a href="#/">Child Monitor</a><a href="#/settings">Settings</a><span className="spacer" />
-        <button className="btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
-      </nav>
-      <Page route={route} />
-    </main>
+    <>
+      <Nav page={route.page} />
+      <main className="shell"><Page route={route} /></main>
+    </>
   )
 }

@@ -14,8 +14,6 @@ const m = vi.hoisted(() => ({
   deleteChild: vi.fn(),
 }))
 vi.mock('./data.ts', () => m)
-const ids = vi.hoisted(() => ({ CHROME_EXT_ID: '', EDGE_EXT_ID: '' }))
-vi.mock('./extensionIds.ts', () => ids)
 
 import { Settings } from './Settings.tsx'
 
@@ -33,8 +31,6 @@ describe('Settings', () => {
     m.setSupervised.mockResolvedValue(undefined)
   })
   afterEach(() => {
-    ids.CHROME_EXT_ID = ''
-    ids.EDGE_EXT_ID = ''
     cleanup()
     vi.clearAllMocks()
   })
@@ -45,21 +41,8 @@ describe('Settings', () => {
     fireEvent.change(screen.getByLabelText('Child'), { target: { value: 'c1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add laptop' }))
     await waitFor(() => expect(m.createDevice).toHaveBeenCalledWith('c1', 'Desk'))
-    expect(await screen.findByText(/install\.ps1 -Token tok123 -ChromeExtId <CHROME_EXT_ID> -EdgeExtId <EDGE_EXT_ID>$/)).toBeTruthy()
+    expect(await screen.findByText(/install\.ps1 -Token tok123$/)).toBeTruthy()
     expect(screen.getByText(/only once/i)).toBeTruthy()
-    expect(screen.getByText('Extension IDs not set yet — web tracking won\'t install')).toBeTruthy()
-  })
-
-  it('fills the extension IDs into the install command once set', async () => {
-    ids.CHROME_EXT_ID = 'a'.repeat(32)
-    ids.EDGE_EXT_ID = 'b'.repeat(32)
-    render(<Settings />)
-    fireEvent.change(await screen.findByLabelText('Laptop name'), { target: { value: 'Desk' } })
-    fireEvent.change(screen.getByLabelText('Child'), { target: { value: 'c1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add laptop' }))
-    const cmd = `install.ps1 -Token tok123 -ChromeExtId ${'a'.repeat(32)} -EdgeExtId ${'b'.repeat(32)}`
-    expect(await screen.findByText(new RegExp(cmd))).toBeTruthy()
-    expect(screen.queryByText(/Extension IDs not set yet/)).toBeNull()
   })
 
   it('marks admin accounts and toggles supervision', async () => {

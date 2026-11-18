@@ -5,7 +5,8 @@ import type { DayData } from './data.ts'
 import { deviceStatus } from './health.ts'
 import type { DeviceStatus } from './health.ts'
 import type { Child, Device, DeviceEvent } from './types.ts'
-import { clip, dayRange, fmtDuration, fmtTime, screenTimeMs, todayJerusalem, topBy } from './usage.ts'
+import { byHour, clip, dayRange, fmtDuration, fmtTime, screenTimeMs, todayJerusalem, topBy } from './usage.ts'
+import { DayClock, HomeArt } from './art.tsx'
 
 interface HomeData {
   children: Child[]
@@ -36,12 +37,26 @@ function lastSeen(devs: Device[]): string {
   return date === todayJerusalem() ? fmtTime(latest) : `${date} ${fmtTime(latest)}`
 }
 
+const STATUS: Record<DeviceStatus | 'none', string> = {
+  ok: 'Reporting',
+  off: 'Off or asleep',
+  silent: 'Not reporting',
+  none: 'No laptop yet',
+}
+
 function TopList({ title, items }: { title: string; items: Array<{ key: string; ms: number }> }) {
+  const max = items[0]?.ms ?? 1
   return (
-    <div>
+    <div className="top">
       <h4>{title}</h4>
-      {items.length === 0 ? <p className="muted">none</p> : (
-        <ol>{items.map((i) => <li key={i.key}>{i.key} <span className="muted">{fmtDuration(i.ms)}</span></li>)}</ol>
+      {items.length === 0 ? <p className="muted">Nothing yet today</p> : (
+        <ol className="bars">
+          {items.map((i) => (
+            <li key={i.key} style={{ '--w': i.ms / max } as CSSProperties}>
+              <span className="name">{i.key}</span><span className="time">{fmtDuration(i.ms)}</span>
+            </li>
+          ))}
+        </ol>
       )}
     </div>
   )
@@ -54,16 +69,37 @@ function ChildCard({ child, data }: { child: Child; data: HomeData }) {
   const apps = data.day.apps.filter((a) => ids.has(a.device_id))
   const web = data.day.web.filter((w) => ids.has(w.device_id))
   const status = childStatus(devs, data.last)
+  const color = child.color ?? 'var(--harbor)'
   return (
-    <li className="card" style={{ '--c': child.color ?? undefined } as CSSProperties}>
-      <h3><a href={`#/child/${child.id}`}>{child.name}</a></h3>
-      <p className="screen-time">{fmtDuration(screenTimeMs(apps, range))} today</p>
-      <p><span className={`dot dot-${status}`} aria-label={`status ${status}`} /> last seen {lastSeen(devs)}</p>
-      <TopList title="Top apps" items={topBy(clip(apps, range), (a) => a.process).slice(0, 3)} />
-      <TopList title="Top sites" items={topBy(clip(web, range), (w) => w.domain).slice(0, 3)} />
+    <li className="kid-card" style={{ '--kid': color } as CSSProperties}>
+      <a className="kid-head" href={`#/child/${child.id}`}>
+        <DayClock minutes={byHour(apps, range)} totalMs={screenTimeMs(apps, range)} color={color} />
+        <div>
+          <h2>{child.name}</h2>
+          <p className={`status status-${status}`}>{STATUS[status]}</p>
+          <p className="muted">Last seen {lastSeen(devs)}</p>
+        </div>
+      </a>
+      <div className="tops">
+        <TopList title="Apps" items={topBy(clip(apps, range), (a) => a.process).slice(0, 3)} />
+        <TopList title="Sites" items={topBy(clip(web, range), (w) => w.domain).slice(0, 3)} />
+      </div>
     </li>
   )
 }
+
+function Empty() {
+  return (
+    <section className="empty">
+      <HomeArt />
+      <h1>Add your children to get started</h1>
+      <p className="lede">Add each child, then install Child Monitor on their laptop.</p>
+      <a className="btn btn-big" href="#/settings">Add a child</a>
+    </section>
+  )
+}
+
+const TODAY = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' })
 
 export function Home() {
   const [data, setData] = useState<HomeData | null>(null)
@@ -77,7 +113,12 @@ export function Home() {
     return () => { live = false }
   }, [])
   if (error) return <p role="alert">Could not load data: {error}</p>
-  if (!data) return <p>Loading…</p>
-  if (data.children.length === 0) return <p>No children yet. Add one in <a href="#/settings">Settings</a>.</p>
-  return <ul className="child-list">{data.children.map((c) => <ChildCard key={c.id} child={c} data={data} />)}</ul>
+  if (!data) return <p className="muted">Loading…</p>
+  if (data.children.length === 0) return <Empty />
+  return (
+    <div className="page">
+      <h1>Today <span className="date">{TODAY.format(new Date())}</span></h1>
+      <ul className="kid-grid">{data.children.map((c) => <ChildCard key={c.id} child={c} data={data} />)}</ul>
+    </div>
+  )
 }

@@ -210,3 +210,13 @@ revoke all on function childmonitor.reset_device_token(uuid) from public;
 grant execute on function childmonitor.ingest(text, jsonb) to anon, authenticated;
 grant execute on function childmonitor.create_device(uuid, text) to authenticated;
 grant execute on function childmonitor.reset_device_token(uuid) to authenticated;
+
+-- Private bucket for the Windows client zip: only the admin can list, download (signed URL) or upload it.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('childmonitor-client', 'childmonitor-client', false, 52428800)
+on conflict (id) do update set public = false;
+
+drop policy if exists childmonitor_client_admin on storage.objects;
+create policy childmonitor_client_admin on storage.objects for all to authenticated
+  using (bucket_id = 'childmonitor-client' and public.is_admin())
+  with check (bucket_id = 'childmonitor-client' and public.is_admin());
