@@ -1,5 +1,5 @@
 begin;
-select plan(41);
+select plan(45);
 
 -- as admin
 set local test.admin = 'on';
@@ -109,6 +109,22 @@ reset role;
 update childmonitor.children set offline = '{"enabled":true}' where id = (select child_id from childmonitor.devices where id = '00000000-0000-0000-0000-0000000000d2');
 set local role anon;
 select is((childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb))->'offline', '{"enabled":true}'::jsonb, 'ingest returns the child''s offline schedule');
+reset role;
+
+-- categories: renames carry the sites along; the queue lists only unknown sites and apps; admin-only
+insert into childmonitor.web_sessions(id, device_id, win_user, browser, url, domain, title, started_at, ended_at) values
+  ('40000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000d2', 'u', 'chrome', 'https://www.ynet.co.il/x', 'www.ynet.co.il', '', now() - interval '1 hour', now() - interval '50 minutes'),
+  ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000d2', 'u', 'chrome', 'https://odd.example/x', 'odd.example', '', now() - interval '1 hour', now() - interval '40 minutes');
+set local role authenticated;
+set local test.admin = 'on';
+select is((select array_agg(name order by name) from childmonitor.uncategorized(now() - interval '1 day') where kind = 'site'),
+          array['odd.example'], 'queue lists unknown sites only (subdomains of known sites are covered)');
+update childmonitor.categories set name = 'Headlines' where name = 'News';
+select is((select category from childmonitor.site_categories where kind = 'site' and pattern = 'ynet.co.il'), 'Headlines', 'renaming a category keeps its sites');
+set local test.admin = 'off';
+select is((select count(*)::int from childmonitor.site_categories), 0, 'non-admin cannot read site categories');
+select throws_ok($$ insert into childmonitor.site_categories(kind, pattern, category) values ('site', 'x.com', 'Games') $$, '42501', null,
+                 'non-admin cannot set categories');
 reset role;
 
 -- child photo: only small inline images

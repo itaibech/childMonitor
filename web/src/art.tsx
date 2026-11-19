@@ -112,7 +112,7 @@ export function Heatmap({ rows, days }: { rows: number[][]; days: string[] }) {
 }
 
 /** Ring split into categories, with a legend that carries the numbers for screen readers. */
-export function Donut({ parts, total }: { parts: Array<{ key: string; ms: number }>; total: number }) {
+export function Donut({ parts, total }: { parts: Array<{ key: string; ms: number; color: string }>; total: number }) {
   const C = 2 * Math.PI * 40
   let offset = 0
   return (
@@ -121,14 +121,14 @@ export function Donut({ parts, total }: { parts: Array<{ key: string; ms: number
         <circle cx="50" cy="50" r="40" className="donut-track" />
         {parts.map((p) => {
           const len = total > 0 ? (p.ms / total) * C : 0
-          const seg = <circle key={p.key} cx="50" cy="50" r="40" className={`seg cat-${p.key}`} strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />
+          const seg = <circle key={p.key} cx="50" cy="50" r="40" className="seg" stroke={p.color} strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />
           offset += len
           return seg
         })}
       </svg>
       <ul className="legend">
         {parts.map((p) => (
-          <li key={p.key}><span className={`dot cat-${p.key}`} />{p.key}<span className="time">{fmtDuration(p.ms)} · {Math.round((p.ms / total) * 100)}%</span></li>
+          <li key={p.key}><span className="dot" style={{ background: p.color }} />{p.key}<span className="time">{fmtDuration(p.ms)} · {Math.round((p.ms / total) * 100)}%</span></li>
         ))}
       </ul>
     </div>

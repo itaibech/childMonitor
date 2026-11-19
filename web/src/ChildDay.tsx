@@ -1,18 +1,34 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { Avatar, Columns, DayClock, Donut, Heatmap, Skeleton } from './art.tsx'
-import { fetchChildren, fetchDay, fetchDevices } from './data.ts'
+import { fetchCategories, fetchChildren, fetchDay, fetchDevices, fetchSiteCategories } from './data.ts'
 import type { DayData } from './data.ts'
 import type { Child, DeviceEvent } from './types.ts'
 import {
-  addDays, byCategory, byHour, clip, dailyMs, dayFacts, dayRange, fmtDuration, fmtTime, screenTimeMs, spanRange,
-  todayJerusalem, topBy, validDate, weekDates,
+  addDays, byCategory, byHour, clip, dailyMs, dayFacts, dayRange, fmtDuration, fmtTime, makeCategorizer, screenTimeMs, spanRange,
+  todayJerusalem, topBy, UNCATEGORIZED, validDate, weekDates, WEB_UNKNOWN,
 } from './usage.ts'
-import type { Range } from './usage.ts'
+import type { Categorizer, Range } from './usage.ts'
+
+interface Cats {
+  cat: Categorizer
+  color: (category: string) => string
+}
 
 interface Loaded {
   child: Child | undefined
   data: DayData
+  cats: Cats
+}
+
+const NO_CATS: Cats = { cat: makeCategorizer([]), color: () => '#a3afc2' }
+const CatsContext = createContext<Cats>(NO_CATS)
+
+async function loadCats(): Promise<Cats> {
+  const [list, rows] = await Promise.all([fetchCategories(), fetchSiteCategories()])
+  const colors = new Map(list.map((c) => [c.name, c.color]))
+  colors.set(WEB_UNKNOWN, '#8fb3d9')
+  return { cat: makeCategorizer(rows), color: (c) => colors.get(c) ?? '#c4ccd8' }
 }
 
 interface Entry {
@@ -30,10 +46,10 @@ const dayLabel = (date: string) => WEEKDAY.format(new Date(`${date}T12:00:00Z`))
 
 /** Day view needs one day; week view needs this week and the one before, for the comparison. */
 async function load(id: string, date: string, week: boolean): Promise<Loaded> {
-  const [children, devices] = await Promise.all([fetchChildren(), fetchDevices()])
+  const [children, devices, cats] = await Promise.all([fetchChildren(), fetchDevices(), loadCats()])
   const ids = devices.filter((d) => d.child_id === id).map((d) => d.id)
   const range = week ? spanRange(addDays(date, -13), date) : dayRange(date)
-  return { child: children.find((c) => c.id === id), data: await fetchDay(ids, range) }
+  return { child: children.find((c) => c.id === id), data: await fetchDay(ids, range), cats }
 }
 
 function filterUser(day: DayData, user: string): DayData {
@@ -69,15 +85,28 @@ function Nothing() {
   return <p className="muted">Nothing recorded. If the laptop was used, check <a href="#/diagnose">Diagnostics</a>.</p>
 }
 
-function Totals({ title, rows }: { title: string; rows: Array<{ key: string; ms: number }> }) {
+function Tag({ category }: { category: string }) {
+  const { color } = useContext(CatsContext)
+  const unsorted = category === UNCATEGORIZED
+  return (
+    <a className={unsorted ? 'tag unsorted' : 'tag'} href="#/categories" style={{ '--c': color(category) } as CSSProperties}
+      title={unsorted ? 'Choose a category' : `Category: ${category}`}>{category}</a>
+  )
+}
+
+function Totals({ title, rows, kind }: { title: string; rows: Array<{ key: string; ms: number }>; kind?: 'site' | 'app' }) {
+  const { cat } = useContext(CatsContext)
   const max = rows[0]?.ms ?? 1
+  const tagOf = (key: string) => (kind === 'site' ? cat.site(key) : kind === 'app' ? cat.app(key) : '')
   return (
     <Panel title={title}>
       {rows.length === 0 ? <Nothing /> : (
         <ol className="bars">
           {rows.slice(0, 10).map((r) => (
             <li key={r.key} style={{ '--w': r.ms / max } as CSSProperties}>
-              <span className="name">{r.key}</span><span className="time">{fmtDuration(r.ms)}</span>
+              <span className="name">{r.key}</span>
+              {tagOf(r.key) && <Tag category={tagOf(r.key)} />}
+              <span className="time">{fmtDuration(r.ms)}</span>
             </li>
           ))}
         </ol>
@@ -87,7 +116,8 @@ function Totals({ title, rows }: { title: string; rows: Array<{ key: string; ms:
 }
 
 function Categories({ data, range }: { data: DayData; range: Range }) {
-  const parts = byCategory(data.apps, data.web, range)
+  const { cat, color } = useContext(CatsContext)
+  const parts = byCategory(data.apps, data.web, range, cat).map((p) => ({ ...p, color: color(p.key) }))
   const total = parts.reduce((s, p) => s + p.ms, 0)
   return <Panel title="By category">{total === 0 ? <Nothing /> : <Donut parts={parts} total={total} />}</Panel>
 }
@@ -151,9 +181,9 @@ function DayBody({ data, date }: { data: DayData; date: string }) {
       </Panel>
       <div className="two">
         <Categories data={data} range={range} />
-        <Totals title="Apps" rows={topBy(clip(data.apps, range), (a) => a.process)} />
+        <Totals title="Apps" kind="app" rows={topBy(clip(data.apps, range), (a) => a.process)} />
       </div>
-      <Totals title="Sites" rows={topBy(clip(data.web, range), (w) => w.domain)} />
+      <Totals title="Sites" kind="site" rows={topBy(clip(data.web, range), (w) => w.domain)} />
       <Timeline entries={timeline(data)} />
     </>
   )
@@ -176,9 +206,9 @@ function WeekBody({ data, date }: { data: DayData; date: string }) {
       </Panel>
       <div className="two">
         <Categories data={data} range={range} />
-        <Totals title="Apps" rows={topBy(clip(data.apps, range), (a) => a.process)} />
+        <Totals title="Apps" kind="app" rows={topBy(clip(data.apps, range), (a) => a.process)} />
       </div>
-      <Totals title="Sites" rows={topBy(clip(data.web, range), (w) => w.domain)} />
+      <Totals title="Sites" kind="site" rows={topBy(clip(data.web, range), (w) => w.domain)} />
     </>
   )
 }
@@ -268,10 +298,12 @@ export function ChildDay({ id, date, week = false }: { id: string; date: string 
   const users = [...new Set([...all.apps, ...all.web, ...all.events].map((r) => r.win_user))].filter((u) => u !== '').sort()
   const data = filterUser(all, user)
   return (
+    <CatsContext.Provider value={loaded.cats}>
     <div className="page" style={{ '--kid': loaded.child.color ?? 'var(--harbor)' } as CSSProperties}>
       <Header child={loaded.child} data={data} date={day} week={week} />
       <Controls id={id} date={day} week={week} user={user} users={users} onUser={setUser} />
       {week ? <WeekBody data={data} date={day} /> : <DayBody data={data} date={day} />}
     </div>
+    </CatsContext.Provider>
   )
 }

@@ -172,48 +172,60 @@ export function lateMs(rows: Timed[], date: string): number {
   return screenTimeMs(rows, { start: new Date(start), end: new Date(end) })
 }
 
-export type Category = 'Games' | 'Video' | 'Social' | 'School' | 'Browsing' | 'Other'
-export const CATEGORIES: Category[] = ['Games', 'Video', 'Social', 'School', 'Browsing', 'Other']
+export interface SiteCategory {
+  kind: 'site' | 'app'
+  pattern: string // site: domain that also covers its subdomains; app: lowercase exe name
+  category: string
+  source: 'auto' | 'manual'
+}
 
-// ponytail: small built-in lists of common apps and sites; extend as new names show up in the reports.
-const APP_WORDS: Array<[RegExp, Category]> = [
-  [/roblox|minecraft|steam|epicgames|fortnite|valorant|leagueoflegends|riotclient|xboxapp|gamebar|solitaire/, 'Games'],
-  [/netflix|vlc|spotify|disney|primevideo|wmplayer|video\.ui|mpc-hc/, 'Video'],
-  [/whatsapp|discord|telegram|instagram|tiktok|messenger|snapchat/, 'Social'],
-  [/winword|excel|powerpnt|onenote|teams|zoom|acrobat|acrord32|notion|geogebra|scratch/, 'School'],
-]
-const SITE_WORDS: Array<[RegExp, Category]> = [
-  [/(^|\.)(roblox|poki|crazygames|miniclip|chess|lichess|coolmathgames|friv|twitch)\./, 'Games'],
-  [/(^|\.)(youtube|youtu|netflix|disneyplus|primevideo|vimeo|spotify|sdarot|kan)\./, 'Video'],
-  [/(^|\.)(tiktok|instagram|facebook|whatsapp|discord|snapchat|reddit|x|twitter|telegram|pinterest)\./, 'Social'],
-  [/(^|\.)(classroom\.google|docs\.google|drive\.google|khanacademy|wikipedia|duolingo|mashov|webtop|office|canva|geogebra|scratch\.mit|edu|gov)\./, 'School'],
-]
+export const UNCATEGORIZED = 'Uncategorized'
+export const WEB_UNKNOWN = 'Web (page unknown)'
 const BROWSERS = /^(chrome|msedge|firefox|brave|opera|iexplore)\.exe$/
 
-export function appCategory(process: string): Category {
-  const p = process.toLowerCase()
-  return BROWSERS.test(p) ? 'Browsing' : APP_WORDS.find(([re]) => re.test(p))?.[1] ?? 'Other'
+export interface Categorizer {
+  site: (domain: string) => string
+  app: (process: string) => string // '' for a browser: its time is split by the sites seen
 }
 
-export function siteCategory(domain: string): Category {
-  const d = `${domain.toLowerCase()}.`
-  return SITE_WORDS.find(([re]) => re.test(d))?.[1] ?? 'Browsing'
+/** Category lookups from the dashboard's list; for sites the most specific (longest) matching entry wins. */
+export function makeCategorizer(rows: SiteCategory[]): Categorizer {
+  const sites = rows.filter((r) => r.kind === 'site').sort((a, b) => b.pattern.length - a.pattern.length)
+  const apps = new Map(rows.filter((r) => r.kind === 'app').map((r) => [r.pattern, r.category]))
+  return {
+    site: (domain) => {
+      const d = domain.toLowerCase()
+      return sites.find((r) => d === r.pattern || d.endsWith(`.${r.pattern}`))?.category ?? UNCATEGORIZED
+    },
+    app: (process) => {
+      const p = process.toLowerCase()
+      return BROWSERS.test(p) ? '' : apps.get(p) ?? UNCATEGORIZED
+    },
+  }
 }
 
-/** Time per category: browser time is split by the sites seen; browser time without a matched site stays Browsing. */
+/** Time per category: browser time is split by the sites seen; browser time without a matched page is WEB_UNKNOWN. */
 export function byCategory(
-  apps: Array<Timed & { process: string }>, web: Array<Timed & { domain: string }>, range: Range,
-): Array<{ key: Category; ms: number }> {
-  const totals = new Map<Category, number>()
-  const add = (c: Category, ms: number) => totals.set(c, (totals.get(c) ?? 0) + ms)
+  apps: Array<Timed & { process: string }>, web: Array<Timed & { domain: string }>, range: Range, cat: Categorizer,
+): Array<{ key: string; ms: number }> {
+  const totals = new Map<string, number>()
+  const add = (c: string, ms: number) => totals.set(c, (totals.get(c) ?? 0) + ms)
   let browserMs = 0
   for (const a of clip(apps, range)) {
-    const c = appCategory(a.process)
-    if (c === 'Browsing') browserMs += a.ms
+    const c = cat.app(a.process)
+    if (c === '') browserMs += a.ms
     else add(c, a.ms)
   }
   const siteRows = clip(web, range)
-  for (const w of siteRows) add(siteCategory(w.domain), w.ms)
-  add('Browsing', Math.max(0, browserMs - siteRows.reduce((s, w) => s + w.ms, 0)))
+  for (const w of siteRows) add(cat.site(w.domain), w.ms)
+  add(WEB_UNKNOWN, Math.max(0, browserMs - siteRows.reduce((s, w) => s + w.ms, 0)))
   return [...totals].map(([key, ms]) => ({ key, ms })).filter((c) => c.ms > 0).sort((a, b) => b.ms - a.ms)
+}
+
+/** A typed site (URL or domain, "www." dropped) or app (name ending in .exe) as a category entry; null if neither. */
+export function toPattern(input: string): { kind: 'site' | 'app'; pattern: string } | null {
+  const t = input.trim().toLowerCase()
+  if (/^[\w .()-]+\.exe$/.test(t)) return { kind: 'app', pattern: t }
+  const host = t.replace(/^[a-z]+:\/\//, '').split(/[/?#:]/)[0].replace(/^www\./, '')
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? { kind: 'site', pattern: host } : null
 }

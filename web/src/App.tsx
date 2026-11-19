@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase.ts'
 import { HomeArt, Logo } from './art.tsx'
+import { Categories } from './Categories.tsx'
 import { ChildDay } from './ChildDay.tsx'
 import { Diagnose, Download } from './Download.tsx'
 import { Home } from './Home.tsx'
@@ -15,6 +16,7 @@ export type Route =
   | { page: 'settings' }
   | { page: 'download' }
   | { page: 'diagnose' }
+  | { page: 'categories' }
 
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#\/?/, '').split('?')
@@ -22,6 +24,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'settings') return { page: 'settings' }
   if (parts[0] === 'download') return { page: 'download' }
   if (parts[0] === 'diagnose') return { page: 'diagnose' }
+  if (parts[0] === 'categories') return { page: 'categories' }
   if (parts[0] === 'child' && parts[1]) {
     const q = new URLSearchParams(query)
     return { page: 'child', id: parts[1], date: q.get('date'), week: q.get('view') === 'week' }
@@ -57,6 +60,7 @@ function Nav({ page }: { page: Route['page'] }) {
         <a className="brand" href="#/"><Logo />Child Monitor</a>
         {link('#/', 'Today', page === 'home' || page === 'child')}
         {link('#/download', 'Install', page === 'download')}
+        {link('#/categories', 'Categories', page === 'categories')}
         {link('#/settings', 'Settings', page === 'settings')}
         {link('#/diagnose', 'Diagnostics', page === 'diagnose')}
       </nav>
@@ -69,6 +73,7 @@ function Page({ route }: { route: Route }) {
   if (route.page === 'settings') return <Settings />
   if (route.page === 'download') return <Download />
   if (route.page === 'diagnose') return <Diagnose />
+  if (route.page === 'categories') return <Categories />
   if (route.page === 'child') return <ChildDay id={route.id} date={route.date} week={route.week} />
   return <Home />
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { addDays, byCategory, byHour, clip, dailyMs, dayFacts, dayRange, lateMs, screenTimeMs, siteCategory, topBy, weekDates } from './usage'
+import { addDays, byCategory, byHour, clip, dailyMs, dayFacts, dayRange, lateMs, makeCategorizer, screenTimeMs, toPattern, topBy, UNCATEGORIZED, WEB_UNKNOWN, weekDates } from './usage'
 
 const MIN = 60_000
 const row = (s: string, e: string, process = 'a.exe') => ({ started_at: s, ended_at: e, process })
@@ -96,7 +96,12 @@ describe('week and insights', () => {
     expect(lateMs(rows, '2026-11-18')).toBe(30 * MIN)
   })
 
-  it('byCategory uses sites for browser time and keeps unmatched browser time as Browsing', () => {
+  it('byCategory uses sites for browser time and keeps unmatched browser time apart', () => {
+    const cat = makeCategorizer([
+      { kind: 'site', pattern: 'youtube.com', category: 'Video', source: 'auto' },
+      { kind: 'site', pattern: 'music.youtube.com', category: 'Music', source: 'auto' },
+      { kind: 'app', pattern: 'robloxplayerbeta.exe', category: 'Games', source: 'auto' },
+    ])
     const range = dayRange('2026-11-18')
     const apps = [
       row('2026-11-18T08:00:00Z', '2026-11-18T09:00:00Z', 'chrome.exe'),
@@ -104,10 +109,20 @@ describe('week and insights', () => {
       row('2026-11-18T10:00:00Z', '2026-11-18T10:10:00Z', 'notepad.exe'),
     ]
     const web = [{ started_at: '2026-11-18T08:00:00Z', ended_at: '2026-11-18T08:40:00Z', domain: 'www.youtube.com' }]
-    expect(byCategory(apps, web, range)).toEqual([
-      { key: 'Video', ms: 40 * MIN }, { key: 'Games', ms: 30 * MIN }, { key: 'Browsing', ms: 20 * MIN }, { key: 'Other', ms: 10 * MIN },
+    expect(byCategory(apps, web, range, cat)).toEqual([
+      { key: 'Video', ms: 40 * MIN }, { key: 'Games', ms: 30 * MIN }, { key: WEB_UNKNOWN, ms: 20 * MIN }, { key: UNCATEGORIZED, ms: 10 * MIN },
     ])
-    expect(siteCategory('classroom.google.com')).toBe('School')
-    expect(siteCategory('notyoutube.com')).toBe('Browsing')
+    expect(cat.site('music.youtube.com')).toBe('Music') // the most specific entry wins
+    expect(cat.site('notyoutube.com')).toBe(UNCATEGORIZED)
+  })
+})
+
+describe('toPattern', () => {
+  it('turns what a parent types into a site or app entry', () => {
+    expect(toPattern(' https://www.Example.com/games?x=1 ')).toEqual({ kind: 'site', pattern: 'example.com' })
+    expect(toPattern('sub.example.co.il')).toEqual({ kind: 'site', pattern: 'sub.example.co.il' })
+    expect(toPattern('Fortnite.EXE')).toEqual({ kind: 'app', pattern: 'fortnite.exe' })
+    expect(toPattern('not a site')).toBeNull()
+    expect(toPattern('')).toBeNull()
   })
 })

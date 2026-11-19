@@ -1,6 +1,6 @@
 import { supabase } from './supabase.ts'
 import type { AppSession, Child, Device, DeviceEvent, DeviceUser, Offline, WebSession } from './types.ts'
-import type { Range } from './usage.ts'
+import type { Range, SiteCategory } from './usage.ts'
 
 export interface DayData {
   apps: AppSession[]
@@ -168,4 +168,50 @@ export async function fetchDiagnostics(): Promise<Diagnostic[]> {
 
 export async function sendDiagnostics(body: string): Promise<void> {
   check(await supabase.from('diagnostics').insert({ body }))
+}
+
+export interface Category {
+  name: string
+  color: string
+  position: number
+}
+
+export interface Unsorted {
+  kind: 'site' | 'app'
+  name: string
+  ms: number
+}
+
+export async function fetchCategories(): Promise<Category[]> {
+  return ok(await supabase.from('categories').select('*').order('position').order('name'))
+}
+
+export async function fetchSiteCategories(): Promise<SiteCategory[]> {
+  return fetchAll<SiteCategory>(() => supabase.from('site_categories').select('*').order('kind').order('pattern'))
+}
+
+/** Sites and apps used in the last `days` days that match no category, most time first. */
+export async function fetchUncategorized(days = 30): Promise<Unsorted[]> {
+  return ok(await supabase.rpc('uncategorized', { since: new Date(Date.now() - days * 86_400_000).toISOString() })) as Unsorted[]
+}
+
+export async function addCategory(name: string, color: string): Promise<void> {
+  check(await supabase.from('categories').insert({ name, color }))
+}
+
+export async function updateCategory(name: string, change: { name?: string; color?: string }): Promise<void> {
+  check(await supabase.from('categories').update(change).eq('name', name))
+}
+
+/** Its sites and apps go back to "Needs a category". */
+export async function deleteCategory(name: string): Promise<void> {
+  check(await supabase.from('categories').delete().eq('name', name))
+}
+
+export async function setSiteCategory(kind: 'site' | 'app', pattern: string, category: string): Promise<void> {
+  check(await supabase.from('site_categories').upsert({ kind, pattern: pattern.toLowerCase(), category, source: 'manual' }))
+}
+
+export async function removeSiteCategory(kind: 'site' | 'app', pattern: string): Promise<void> {
+  check(await supabase.from('site_categories').delete().eq('kind', kind).eq('pattern', pattern))
 }
