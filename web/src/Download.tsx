@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { DownloadArt } from './art.tsx'
 import * as data from './data.ts'
 import type { ClientFile, Diagnostic } from './data.ts'
+import release from '../../version.json'
 import { LATEST, summarizeReport } from './health.ts'
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -47,11 +48,13 @@ function DownloadButton({ file }: { file: ClientFile | null }) {
   const [error, setError] = useState('')
   if (!file) return <p className="note">No client uploaded yet. Upload <b>{data.CLIENT_FILE}</b> below.</p>
   const go = () => data.clientDownloadUrl().then((url) => { location.href = url }, (e: unknown) => setError(message(e)))
-  const updated = new Date(file.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const day = (d: string | number) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const updated = day(file.updatedAt)
   return (
     <>
       <button className="btn btn-big" onClick={() => void go()}>Download for Windows</button>
-      <p className="muted">{data.CLIENT_FILE}, {Math.round(file.size / 1048576)} MB, updated {updated}</p>
+      <p className="muted">Version {release.version}, released {day(release.date)}</p>
+      <p className="muted">{data.CLIENT_FILE}, {Math.round(file.size / 1048576)} MB, uploaded {updated}</p>
       {error && <p role="alert">{error}</p>}
     </>
   )
