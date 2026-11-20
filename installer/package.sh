@@ -16,4 +16,5 @@ rm -f "$here/dist/ChildMonitor.zip"
 (cd "$stage" && zip -qr9 "$here/dist/ChildMonitor.zip" .)
 size=$(wc -c < "$here/dist/ChildMonitor.zip")
 (( size < 50 * 1024 * 1024 )) || { echo "zip is $size bytes, over the 50 MB upload limit" >&2; exit 1; }
+echo "version $(tr -d "\n" < "$root/version.json")"
 echo "built $here/dist/ChildMonitor.zip ($((size / 1024 / 1024)) MB)"

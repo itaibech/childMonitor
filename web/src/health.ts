@@ -1,4 +1,18 @@
+import release from '../../version.json'
 import type { Device, DeviceEvent } from './types.ts'
+
+/** The newest laptop service, from version.json at the repo root (the agent build reads the same file). */
+export const LATEST = `${release.version} (${release.date})`
+
+const parts = (v: string) => (v.match(/^\d+(\.\d+)*/)?.[0] ?? '0').split('.').map(Number)
+
+/** True when a laptop reported an older service than LATEST; null/unparsed ("0.1.0", nothing) counts as old. */
+export function isOutdated(reported: string | null): boolean {
+  const have = parts(reported ?? '')
+  const want = parts(release.version)
+  for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== want[i]) return (have[i] ?? 0) < want[i]
+  return false
+}
 
 export type DeviceStatus = 'ok' | 'off' | 'silent'
 
@@ -33,6 +47,7 @@ const RULES: Array<{ label: string; section: string; pass: RegExp; fix: string }
   { label: 'Helper running for a signed-in child', section: 'Helper', pass: /\\/, fix: 'Sign in to Windows as the child, and check the account is supervised in Settings.' },
   { label: 'Install code accepted', section: 'Server check', pass: /"ok"\s*:\s*true/, fix: 'Make a new install code in Settings and run the install command again.' },
   { label: 'Smart App Control off', section: 'Smart App Control', pass: /^\s*0\s*$/, fix: 'Turn it off: see Common questions on the Install page.' },
+  { label: `Service up to date (${LATEST})`, section: 'Version', pass: new RegExp(`^\\s*${release.version.replace(/\./g, '\\.')}\\b`, 'm'), fix: 'Download the latest zip on the Install page and run the install on this laptop again.' },
   { label: 'Laptop can reach the server', section: 'Network', pass: /TcpTestSucceeded\s*:\s*True/, fix: 'Check the laptop is online.' },
 ]
 

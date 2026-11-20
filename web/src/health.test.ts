@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { deviceStatus, summarizeReport } from './health.ts'
+import release from '../../version.json'
+import { deviceStatus, isOutdated, LATEST, summarizeReport } from './health.ts'
 import type { Device, DeviceEvent } from './types.ts'
 
 const now = new Date('2026-11-18T12:00:00Z')
@@ -32,12 +33,12 @@ describe('deviceStatus', () => {
 
 describe('summarizeReport', () => {
   const good = [
-    '== Service', 'Status    : Running', '== Helper', '13688  1 PC\\Emma 11/18/2026', '== Build date', 'x',
+    '== Service', 'Status    : Running', '== Helper', '13688  1 PC\\Emma 11/18/2026', '== Version', LATEST, '== Build date', 'x',
     '== Server check (answer only, never the code)', '{"ok":true,"accepted":0}',
     '== Smart App Control (0 off, 1 on, 2 evaluation)', '0', '== Network', 'TcpTestSucceeded : True',
   ].join('\n')
   it('marks a healthy laptop all green', () => {
-    expect(summarizeReport(good).map((c) => c.ok)).toEqual([true, true, true, true, true])
+    expect(summarizeReport(good).map((c) => c.ok)).toEqual([true, true, true, true, true, true])
   })
   it('flags an invalid code, Smart App Control and a stopped service', () => {
     const bad = good.replace('Running', 'Stopped').replace('{"ok":true,"accepted":0}', 'failed: invalid token').replace(/\n0\n/, '\n1\n')
@@ -46,5 +47,15 @@ describe('summarizeReport', () => {
   })
   it('leaves checks unknown when an older report lacks the section', () => {
     expect(summarizeReport('== Service\nStatus : Running').find((c) => c.label === 'Install code accepted')?.ok).toBeNull()
+  })
+})
+
+describe('isOutdated', () => {
+  it('compares the reported version with version.json', () => {
+    expect(isOutdated(LATEST)).toBe(false)
+    expect(isOutdated(`${release.version}`)).toBe(false)
+    expect(isOutdated('0.1.0')).toBe(true)
+    expect(isOutdated(null)).toBe(true)
+    expect(isOutdated('99.0.0 (2099-01-01)')).toBe(false)
   })
 })

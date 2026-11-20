@@ -10,6 +10,8 @@ Windows PowerShell 5.1+, run from an elevated prompt.
 
 `install.ps1` is idempotent (re-run to upgrade).
 
+Releases: bump `version` and `date` in the repo-root `version.json` whenever the agent changes. The build stamps it into Core.dll (sent on every upload, shown in Diagnostics), and the website uses it to flag laptops that run an older service.
+
 Installed: `C:\Program Files\ChildMonitor` (`ChildMonitorService.exe`, `Helper.exe`),
 `C:\ProgramData\ChildMonitor\config.json` (SYSTEM + Administrators only), service `ChildMonitorSvc`, Chrome/Edge policies
 (including `AllowDeletingBrowserHistory=0`, which keeps the history the service reads), DNS `1.1.1.3`/`1.0.0.3`/`2606:4700:4700::1113`/`2606:4700:4700::1003` on up physical adapters,

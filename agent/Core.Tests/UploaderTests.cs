@@ -279,4 +279,12 @@ public sealed class UploaderTests : IDisposable
         Assert.True(root.TryGetProperty("exe_path", out _));
         Assert.True(root.TryGetProperty("win_user", out _));
     }
+
+    [Fact]
+    public void AgentVersion_IsStampedFromVersionJson()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "../../../../../version.json");
+        var v = JsonDocument.Parse(File.ReadAllText(path)).RootElement;
+        Assert.Equal($"{v.GetProperty("version").GetString()} ({v.GetProperty("date").GetString()})", Config.AgentVersion);
+    }
 }

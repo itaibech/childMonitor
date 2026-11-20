@@ -3,6 +3,7 @@ import { Avatar } from './art.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import * as data from './data.ts'
 import { Command } from './Download.tsx'
+import { isOutdated, LATEST } from './health.ts'
 import type { Child, Device, DeviceUser, Offline } from './types.ts'
 
 function useAsync<T>(fn: () => Promise<T>): { value: T | null; error: string | null; reload: () => void } {
@@ -53,6 +54,16 @@ function Accounts({ deviceId }: { deviceId: string }) {
   )
 }
 
+function Version({ device }: { device: Device }) {
+  if (!device.last_seen_at) return null // never reported: nothing to compare yet
+  if (!isOutdated(device.agent_version)) return <p className="muted version">Service {device.agent_version}, up to date</p>
+  return (
+    <p className="update-note">
+      Service {device.agent_version ?? 'older than 1.1.0'} is out of date; the latest is {LATEST}. To update, download the zip on the <a href="#/download">Install page</a>, make a new install code here, and run the install again on {device.name}.
+    </p>
+  )
+}
+
 function DeviceRow({ device, childName, onChange }: { device: Device; childName: string; onChange: () => void }) {
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -70,6 +81,7 @@ function DeviceRow({ device, childName, onChange }: { device: Device; childName:
           <button className="btn btn-danger" onClick={remove}>Remove laptop</button>
         </div>
       </div>
+      <Version device={device} />
       {error && <p role="alert">{error}</p>}
       {token && <ShowToken token={token} />}
       <Accounts deviceId={device.id} />

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { DownloadArt } from './art.tsx'
 import * as data from './data.ts'
 import type { ClientFile, Diagnostic } from './data.ts'
-import { summarizeReport } from './health.ts'
+import { LATEST, summarizeReport } from './health.ts'
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -79,7 +79,7 @@ function Upload({ onDone }: { onDone: () => void }) {
   return (
     <details className="panel">
       <summary>Upload a new version</summary>
-      <p className="muted">Build it on the Mac with <code>installer/package.sh</code>, then choose <code>installer/dist/{data.CLIENT_FILE}</code>.</p>
+      <p className="muted">Build it on the Mac with <code>installer/package.sh</code>, then choose <code>installer/dist/{data.CLIENT_FILE}</code>. This site expects service {LATEST}.</p>
       <form className="upload" onSubmit={(e) => void submit(e)}>
         <label htmlFor="zip">Client zip</label>
         <input id="zip" name="zip" type="file" accept=".zip,application/zip" required />
@@ -103,6 +103,7 @@ const DIAGNOSE = String.raw`& {
 '== App errors'; Get-WinEvent -LogName Application -MaxEvents 400 | Where-Object { $_.ProviderName -in 'ChildMonitorSvc','.NET Runtime','Application Error' } | Select-Object -First 15 | Format-List TimeCreated,ProviderName,Message
 '== Smart App Control (0 off, 1 on, 2 evaluation)'; (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState
 '== Offline time'; Get-Content C:\ProgramData\ChildMonitor\offline.json -ErrorAction SilentlyContinue; netsh advfirewall show currentprofile firewallpolicy
+'== Version'; (Get-Item 'C:\Program Files\ChildMonitor\Core.dll' -ErrorAction SilentlyContinue).VersionInfo.ProductVersion
 '== Build date'; (Get-Item 'C:\Program Files\ChildMonitor\Core.dll' -ErrorAction SilentlyContinue).LastWriteTime
 '== Server check (answer only, never the code)'; try { $c = Get-Content C:\ProgramData\ChildMonitor\config.json -Raw | ConvertFrom-Json
   Invoke-RestMethod -Method Post "$($c.supabaseUrl)/rest/v1/rpc/ingest" -Headers @{ apikey = $c.apiKey; Authorization = "Bearer $($c.apiKey)"; 'Content-Profile' = 'childmonitor' } -ContentType 'application/json' -Body (@{ token = $c.token; batch = @{} } | ConvertTo-Json) | ConvertTo-Json -Compress } catch { "failed: $($_.ErrorDetails.Message) $($_.Exception.Message)" }

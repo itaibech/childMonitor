@@ -287,6 +287,10 @@ details.panel[open] summary { margin-block-end: .75rem; }
   &:hover { text-decoration: underline; }
 }
 
+/* Laptop service version */
+.version { margin: 0 0 .75rem; font-size: .9rem; }
+.update-note { margin: 0 0 .75rem; padding: .7rem 1rem; border-radius: 16px; background: var(--rose-bg); font-weight: 600; }
+
 /* Diagnostics */
 .sr-only { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .send { display: grid; gap: .5rem; }

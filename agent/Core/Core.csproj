@@ -1,10 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- One source for the release: ../../version.json, also read by the website to spot out-of-date laptops. -->
+    <ReleaseJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../version.json'))</ReleaseJson>
+    <Version>$([System.Text.RegularExpressions.Regex]::Replace($(ReleaseJson), '(?s).*"version"\s*:\s*"([^"]+)".*', '$1'))</Version>
+    <ReleaseDate>$([System.Text.RegularExpressions.Regex]::Replace($(ReleaseJson), '(?s).*"date"\s*:\s*"([^"]+)".*', '$1'))</ReleaseDate>
+    <InformationalVersion>$(Version) ($(ReleaseDate))</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

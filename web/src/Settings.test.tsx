@@ -70,6 +70,12 @@ describe('Settings', () => {
     expect(screen.getByText(/only once/i)).toBeTruthy()
   })
 
+  it('tells which laptop needs a service update', async () => {
+    m.fetchDevices.mockResolvedValue([{ ...device, last_seen_at: '2026-11-19T10:00:00Z', agent_version: '0.1.0' }])
+    render(<Settings />)
+    expect(await screen.findByText(/Service 0\.1\.0 is out of date.*install again on Kitchen/)).toBeTruthy()
+  })
+
   it('marks admin accounts and toggles supervision', async () => {
     render(<Settings />)
     expect(await screen.findByText('admin')).toBeTruthy()
