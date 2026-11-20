@@ -202,7 +202,8 @@ begin
   select coalesce(jsonb_agg(sid order by sid), '[]'::jsonb) into sids
     from childmonitor.device_users where device_id = dev and supervised;
   return jsonb_build_object('ok', true, 'accepted', n, 'supervised_sids', sids,
-    'offline', (select c.offline from childmonitor.devices d join childmonitor.children c on c.id = d.child_id where d.id = dev));
+    'offline', (select c.offline from childmonitor.devices d join childmonitor.children c on c.id = d.child_id where d.id = dev),
+    'limits', childmonitor.limits_for(dev));
 end $$;
 
 revoke all on function childmonitor.ingest_sessions(uuid, jsonb) from public, anon, authenticated;
@@ -370,3 +371,49 @@ returns table(kind text, name text, ms bigint) language sql stable security invo
 $$;
 revoke all on function childmonitor.uncategorized(timestamptz) from public, anon;
 grant execute on function childmonitor.uncategorized(timestamptz) to authenticated;
+
+-- Daily time limits per child, on one app (lowercase exe) or on a category (all its apps together).
+-- extra_minutes is the parent's extension for the day extra_on (Asia/Jerusalem), so it lapses at midnight by itself.
+create table if not exists childmonitor.time_limits (
+  id uuid primary key default gen_random_uuid(),
+  child_id uuid not null references childmonitor.children(id) on delete cascade,
+  app text check (app = lower(app) and length(app) between 2 and 253),
+  category text references childmonitor.categories(name) on update cascade on delete cascade,
+  minutes int not null check (minutes between 0 and 1440),
+  extra_minutes int not null default 0 check (extra_minutes between 0 and 1440),
+  extra_on date,
+  check ((app is null) <> (category is null)),
+  unique (child_id, app),
+  unique (child_id, category)
+);
+alter table childmonitor.time_limits enable row level security;
+drop policy if exists time_limits_admin on childmonitor.time_limits;
+create policy time_limits_admin on childmonitor.time_limits for all using (public.is_admin()) with check (public.is_admin());
+grant select, insert, update, delete on childmonitor.time_limits to authenticated;
+
+-- Adds minutes to today's extension (a negative number takes some back, never below 0). Runs as the caller: RLS applies.
+create or replace function childmonitor.extend_limit(lim uuid, add_minutes int)
+returns void language sql security invoker set search_path = '' as $$
+  update childmonitor.time_limits
+     set extra_minutes = least(1440, greatest(0, add_minutes + case when extra_on = (now() at time zone 'Asia/Jerusalem')::date then extra_minutes else 0 end)),
+         extra_on = (now() at time zone 'Asia/Jerusalem')::date
+   where id = lim
+$$;
+revoke all on function childmonitor.extend_limit(uuid, int) from public, anon;
+grant execute on function childmonitor.extend_limit(uuid, int) to authenticated;
+
+-- What the laptop enforces: each limit with today's allowance and the exe names it covers.
+create or replace function childmonitor.limits_for(dev uuid)
+returns jsonb language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', l.id,
+           'name', coalesce(l.app, l.category),
+           'minutes', l.minutes + case when l.extra_on = (now() at time zone 'Asia/Jerusalem')::date then l.extra_minutes else 0 end,
+           'apps', case when l.app is not null then jsonb_build_array(l.app) else
+             coalesce((select jsonb_agg(s.pattern order by s.pattern) from childmonitor.site_categories s
+                        where s.kind = 'app' and s.category = l.category), '[]'::jsonb) end)
+         order by l.id), '[]'::jsonb)
+    from childmonitor.time_limits l join childmonitor.devices d on d.child_id = l.child_id
+   where d.id = dev
+$$;
+revoke all on function childmonitor.limits_for(uuid) from public, anon, authenticated;

@@ -10,6 +10,7 @@ internal sealed class Worker : BackgroundService
 {
     public const string DataDir = @"C:\ProgramData\ChildMonitor";
     private static readonly TimeSpan UploadEvery = TimeSpan.FromMinutes(5); // also flushed before sleep/shutdown
+    private static readonly TimeSpan SettingsEvery = TimeSpan.FromMinutes(1); // limits and extensions land within a minute
     private static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan HeartbeatEvery = TimeSpan.FromSeconds(300);
     private static readonly TimeSpan UsersEvery = TimeSpan.FromHours(1);
@@ -24,6 +25,7 @@ internal sealed class Worker : BackgroundService
     private readonly BrowserKiller _killer;
     private readonly SiteTracker _sites;
     private readonly OfflineTime _offline;
+    private readonly TimeLimitEnforcer _limits;
     private readonly ILogger<Worker> _log;
     private readonly object _gate = new();
     private volatile IReadOnlySet<string> _supervised = new HashSet<string>();
@@ -34,10 +36,13 @@ internal sealed class Worker : BackgroundService
         _uploader = new Uploader(_queue, _http, Config.Load(), _store);
         _sessions = new SessionLauncher(logs.CreateLogger<SessionLauncher>());
         _sites = new SiteTracker(Enqueue, logs.CreateLogger<SiteTracker>());
-        _pipe = new PipeServer(_queue, () => _supervised, _sites.OnPipeRow, logs.CreateLogger<PipeServer>());
-        _killer = new BrowserKiller(_sessions, () => _supervised, Enqueue, logs.CreateLogger<BrowserKiller>());
+        _limits = new TimeLimitEnforcer(_sessions, () => _supervised, Enqueue, logs.CreateLogger<TimeLimitEnforcer>());
+        _pipe = new PipeServer(_queue, () => _supervised, (sid, row) => { _sites.OnPipeRow(sid, row); _limits.OnPipeRow(sid, row); },
+            logs.CreateLogger<PipeServer>());
+        _killer = new BrowserKiller(_sessions, () => _supervised, Enqueue, _limits.IsOver, logs.CreateLogger<BrowserKiller>());
         _offline = new OfflineTime(_sessions, () => _supervised, Record, logs.CreateLogger<OfflineTime>());
         _uploader.OfflineReceived += json => Guard(() => _offline.Update(json));
+        _uploader.LimitsReceived += json => Guard(() => _limits.Update(json));
         _store.Changed += OnSupervisionChanged;
     }
 
@@ -51,6 +56,7 @@ internal sealed class Worker : BackgroundService
             _pipe.RunAsync(ct),
             Every(UsersEvery, ReportUsers, ct),
             Every(UploadEvery, () => _uploader.FlushAsync(ct), ct),
+            Every(SettingsEvery, () => _uploader.PingAsync(ct), ct),
             Every(CheckEvery, Check, ct),
             Every(HeartbeatEvery, () => Record("heartbeat", ""), ct));
     }
@@ -71,6 +77,7 @@ internal sealed class Worker : BackgroundService
     private void Check()
     {
         _sessions.Reconcile(_supervised);
+        _limits.Apply();
         _killer.Sweep();
         _sites.Retry(_supervised);
         _offline.Apply();

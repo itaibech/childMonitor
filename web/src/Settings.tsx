@@ -5,6 +5,7 @@ import * as data from './data.ts'
 import { CategorySettings } from './Categories.tsx'
 import { Command } from './Download.tsx'
 import { isOutdated, LATEST } from './health.ts'
+import { LimitsSection } from './Limits.tsx'
 import type { Child, Device, DeviceUser, Offline } from './types.ts'
 
 function useAsync<T>(fn: () => Promise<T>): { value: T | null; error: string | null; reload: () => void } {
@@ -242,6 +243,7 @@ export function Settings() {
       <h1>Settings</h1>
       <ChildrenSection children={kids.value} onChange={reload} />
       <OfflineSection children={kids.value} />
+      <LimitsSection children={kids.value} />
       <CategorySettings />
       <AddLaptop children={kids.value} onAdded={devs.reload} />
       <h2>Laptops</h2>

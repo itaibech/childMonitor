@@ -1,5 +1,5 @@
 import { supabase } from './supabase.ts'
-import type { AppSession, Child, Device, DeviceEvent, DeviceUser, Offline, WebSession } from './types.ts'
+import type { AppSession, Child, Device, DeviceEvent, DeviceUser, Offline, TimeLimit, WebSession } from './types.ts'
 import type { Range, SiteCategory } from './usage.ts'
 
 export interface DayData {
@@ -214,4 +214,25 @@ export async function setSiteCategory(kind: 'site' | 'app', pattern: string, cat
 
 export async function removeSiteCategory(kind: 'site' | 'app', pattern: string): Promise<void> {
   check(await supabase.from('site_categories').delete().eq('kind', kind).eq('pattern', pattern))
+}
+
+export async function fetchTimeLimits(): Promise<TimeLimit[]> {
+  return ok(await supabase.from('time_limits').select('*').order('category').order('app'))
+}
+
+export async function addTimeLimit(childId: string, target: { app: string } | { category: string }, minutes: number): Promise<void> {
+  check(await supabase.from('time_limits').insert({ child_id: childId, minutes, ...target }))
+}
+
+export async function setLimitMinutes(id: string, minutes: number): Promise<void> {
+  check(await supabase.from('time_limits').update({ minutes }).eq('id', id))
+}
+
+export async function removeTimeLimit(id: string): Promise<void> {
+  check(await supabase.from('time_limits').delete().eq('id', id))
+}
+
+/** Adds (or with a negative number takes back) minutes for today only. */
+export async function extendLimit(id: string, addMinutes: number): Promise<void> {
+  check(await supabase.rpc('extend_limit', { lim: id, add_minutes: addMinutes }))
 }

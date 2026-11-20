@@ -1,3 +1,5 @@
+import type { TimeLimit } from './types.ts'
+
 const TZ = 'Asia/Jerusalem'
 const HOUR_MS = 3_600_000
 const MIN_MS = 60_000
@@ -229,3 +231,16 @@ export function toPattern(input: string): { kind: 'site' | 'app'; pattern: strin
   const host = t.replace(/^[a-z]+:\/\//, '').split(/[/?#:]/)[0].replace(/^www\./, '')
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? { kind: 'site', pattern: host } : null
 }
+
+/** Today's allowance in minutes: the limit plus today's extension. */
+export function allowedMinutes(limit: TimeLimit, today: string): number {
+  return limit.minutes + (limit.extra_on === today ? limit.extra_minutes : 0)
+}
+
+/** Time in the apps a limit covers: its exe, or every app in its category. */
+export function limitUsedMs(limit: TimeLimit, apps: Array<Timed & { process: string }>, range: Range, cat: Categorizer): number {
+  const covered = apps.filter((a) => (limit.app ? a.process.toLowerCase() === limit.app : cat.app(a.process) === limit.category))
+  return screenTimeMs(covered, range)
+}
+
+export const limitName = (l: TimeLimit) => l.app ?? l.category ?? ''

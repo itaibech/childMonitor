@@ -22,6 +22,12 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
     /// <summary>The child's offline schedule as raw JSON ("null" when none), from every successful reply.</summary>
     public event Action<string>? OfflineReceived;
 
+    /// <summary>The child's time limits as a raw JSON array, from every successful reply.</summary>
+    public event Action<string>? LimitsReceived;
+
+    /// <summary>An empty upload, only to fetch settings (time limits, extensions) between the 5-minute uploads.</summary>
+    public Task PingAsync(CancellationToken ct) => PostAsync([], ct);
+
     public async Task<int> FlushAsync(CancellationToken ct)
     {
         var sent = 0;
@@ -119,6 +125,8 @@ public sealed class Uploader(Queue q, HttpClient http, Config cfg, SupervisionSt
                 _supervision.Save(sids.EnumerateArray().Select(s => s.GetString()).OfType<string>());
             if (doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("offline", out var offline))
                 OfflineReceived?.Invoke(offline.GetRawText());
+            if (doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("limits", out var limits))
+                LimitsReceived?.Invoke(limits.GetRawText());
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or IOException)
         {

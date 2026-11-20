@@ -55,6 +55,18 @@ internal static class Native
         IntPtr threadAttr, bool inherit, uint flags, IntPtr env, string cwd, ref StartupInfo si,
         out ProcessInformation pi);
 
+    [DllImport("wtsapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool WTSSendMessageW(IntPtr server, int sessionId, string title, int titleBytes,
+        string message, int messageBytes, int style, int timeoutSeconds, out int response, bool wait);
+
+    /// <summary>Shows a message box on the session's desktop without waiting for it (closes itself after a minute).</summary>
+    public static void ShowMessage(int sessionId, string title, string message)
+    {
+        const int MbIconInformation = 0x40, MbTopmost = 0x40000;
+        WTSSendMessageW(CurrentServer, sessionId, title, title.Length * 2, message, message.Length * 2,
+            MbIconInformation | MbTopmost, 60, out _, false);
+    }
+
     [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentThread();
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool OpenThreadToken(IntPtr thread, uint access, bool openAsSelf, out IntPtr token);

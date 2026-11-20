@@ -13,6 +13,17 @@ export interface Offline {
   weekend: { from: string; to: string }
 }
 
+/** Daily limit on one app (lowercase exe) or a category; extra_minutes counts only on extra_on (today's extension). */
+export interface TimeLimit {
+  id: string
+  child_id: string
+  app: string | null
+  category: string | null
+  minutes: number
+  extra_minutes: number
+  extra_on: string | null
+}
+
 export interface Device {
   id: string
   child_id: string

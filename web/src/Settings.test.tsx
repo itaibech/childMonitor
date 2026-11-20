@@ -18,6 +18,7 @@ const m = vi.hoisted(() => ({
   fetchSiteCategories: vi.fn(),
   fetchUncategorized: vi.fn(),
   addCategory: vi.fn(),
+  fetchTimeLimits: vi.fn(),
 }))
 vi.mock('./data.ts', () => m)
 
@@ -39,6 +40,7 @@ describe('Settings', () => {
     m.fetchSiteCategories.mockResolvedValue([])
     m.fetchUncategorized.mockResolvedValue([])
     m.addCategory.mockResolvedValue(undefined)
+    m.fetchTimeLimits.mockResolvedValue([])
   })
   afterEach(() => {
     cleanup()

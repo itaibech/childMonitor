@@ -8,11 +8,12 @@ namespace Service;
 
 /// <summary>
 /// Kills blocklisted browsers (by exe name or PE OriginalFilename) started in supervised users' sessions and
-/// reports browser_blocked.
+/// reports browser_blocked. Also kills apps whose time limit ran out today (<paramref name="overLimit"/>; the
+/// limit enforcer reports those).
 /// </summary>
 internal sealed class BrowserKiller(
     SessionLauncher sessions, Func<IReadOnlySet<string>> supervised, Action<QueueItem> enqueue,
-    ILogger<BrowserKiller> log) : IDisposable
+    Func<string, bool> overLimit, ILogger<BrowserKiller> log) : IDisposable
 {
     private static readonly TimeSpan ReportEvery = TimeSpan.FromSeconds(30);
 
@@ -67,16 +68,18 @@ internal sealed class BrowserKiller(
 
     private void Handle(string exe, int pid, SessionUser user)
     {
-        if (!IsBlocked(exe, pid)) return;
+        var limited = overLimit(exe);
+        if (!limited && !IsBlocked(exe, pid)) return;
         try
         {
             using var p = Process.GetProcessById(pid);
-            if (!IsBlocked(p.ProcessName + ".exe", pid)) return; // PID reused since the event
+            var now = p.ProcessName + ".exe";
+            if (limited ? !overLimit(now) : !IsBlocked(now, pid)) return; // PID reused since the event
             p.Kill();
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException
                                       or System.ComponentModel.Win32Exception) { return; }
-        Report(user.WinUser, exe.ToLowerInvariant());
+        if (!limited) Report(user.WinUser, exe.ToLowerInvariant());
     }
 
     private bool IsBlocked(string exe, int pid) =>

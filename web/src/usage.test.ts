@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { addDays, byCategory, byHour, clip, dailyMs, dayFacts, dayRange, lateMs, makeCategorizer, screenTimeMs, toPattern, topBy, UNCATEGORIZED, WEB_UNKNOWN, weekDates } from './usage'
+import { addDays, allowedMinutes, byCategory, limitUsedMs, byHour, clip, dailyMs, dayFacts, dayRange, lateMs, makeCategorizer, screenTimeMs, toPattern, topBy, UNCATEGORIZED, WEB_UNKNOWN, weekDates } from './usage'
 
 const MIN = 60_000
 const row = (s: string, e: string, process = 'a.exe') => ({ started_at: s, ended_at: e, process })
@@ -124,5 +124,27 @@ describe('toPattern', () => {
     expect(toPattern('Fortnite.EXE')).toEqual({ kind: 'app', pattern: 'fortnite.exe' })
     expect(toPattern('not a site')).toBeNull()
     expect(toPattern('')).toBeNull()
+  })
+})
+
+describe('time limits', () => {
+  const base = { id: 'l', child_id: 'c', app: null, category: null, minutes: 60, extra_minutes: 30, extra_on: '2026-11-20' }
+  const at = (h: number, m = 0) => `2026-11-20T${String(h - 2).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z` // Jerusalem is UTC+2
+  const apps = [
+    { process: 'RobloxPlayerBeta.exe', started_at: at(10), ended_at: at(11) },
+    { process: 'minecraft.exe', started_at: at(12), ended_at: at(12, 30) },
+    { process: 'chrome.exe', started_at: at(13), ended_at: at(14) },
+  ]
+  const cat = makeCategorizer([
+    { kind: 'app', pattern: 'robloxplayerbeta.exe', category: 'Games', source: 'auto' },
+    { kind: 'app', pattern: 'minecraft.exe', category: 'Games', source: 'auto' },
+  ])
+  it('counts the app, or every app in the category', () => {
+    expect(limitUsedMs({ ...base, app: 'robloxplayerbeta.exe' }, apps, dayRange('2026-11-20'), cat)).toBe(60 * 60_000)
+    expect(limitUsedMs({ ...base, category: 'Games' }, apps, dayRange('2026-11-20'), cat)).toBe(90 * 60_000)
+  })
+  it("adds today's extension only on its day", () => {
+    expect(allowedMinutes(base, '2026-11-20')).toBe(90)
+    expect(allowedMinutes(base, '2026-11-21')).toBe(60)
   })
 })

@@ -1,11 +1,12 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { createContext, useContext, useEffect, useState } from 'react'
 import { Avatar, Columns, DayClock, Donut, Heatmap, Skeleton } from './art.tsx'
-import { fetchCategories, fetchChildren, fetchDay, fetchDevices, fetchSiteCategories } from './data.ts'
+import { fetchCategories, fetchChildren, fetchDay, fetchDevices, fetchSiteCategories, fetchTimeLimits } from './data.ts'
+import { TodayLimits } from './Limits.tsx'
 import type { DayData } from './data.ts'
-import type { Child, DeviceEvent } from './types.ts'
+import type { Child, DeviceEvent, TimeLimit } from './types.ts'
 import {
-  addDays, byCategory, byHour, clip, dailyMs, dayFacts, dayRange, fmtDuration, fmtTime, makeCategorizer, screenTimeMs, spanRange,
+  addDays, byCategory, byHour, clip, dailyMs, dayFacts, dayRange, fmtDuration, fmtTime, limitUsedMs, makeCategorizer, screenTimeMs, spanRange,
   todayJerusalem, topBy, UNCATEGORIZED, validDate, weekDates, WEB_UNKNOWN,
 } from './usage.ts'
 import type { Categorizer, Range } from './usage.ts'
@@ -19,6 +20,7 @@ interface Loaded {
   child: Child | undefined
   data: DayData
   cats: Cats
+  limits: TimeLimit[]
 }
 
 const NO_CATS: Cats = { cat: makeCategorizer([]), color: () => '#a3afc2' }
@@ -46,10 +48,10 @@ const dayLabel = (date: string) => WEEKDAY.format(new Date(`${date}T12:00:00Z`))
 
 /** Day view needs one day; week view needs this week and the one before, for the comparison. */
 async function load(id: string, date: string, week: boolean): Promise<Loaded> {
-  const [children, devices, cats] = await Promise.all([fetchChildren(), fetchDevices(), loadCats()])
+  const [children, devices, cats, limits] = await Promise.all([fetchChildren(), fetchDevices(), loadCats(), fetchTimeLimits()])
   const ids = devices.filter((d) => d.child_id === id).map((d) => d.id)
   const range = week ? spanRange(addDays(date, -13), date) : dayRange(date)
-  return { child: children.find((c) => c.id === id), data: await fetchDay(ids, range), cats }
+  return { child: children.find((c) => c.id === id), data: await fetchDay(ids, range), cats, limits: limits.filter((l) => l.child_id === id) }
 }
 
 function filterUser(day: DayData, user: string): DayData {
@@ -62,18 +64,19 @@ const EVENT_LABEL: Record<string, string> = {
   logon: 'Signed in', logoff: 'Signed out', lock: 'Locked', unlock: 'Unlocked', suspend: 'Went to sleep', resume: 'Woke up',
   shutdown: 'Shut down', agent_start: 'Monitor started', browser_blocked: 'Blocked browser',
   offline_on: 'Internet off for the night', offline_off: 'Internet back on',
+  limit_warning: '5 minutes left', limit_blocked: 'Time limit reached',
 }
 
 function eventLabel(e: DeviceEvent): string {
-  const exe = e.detail?.exe
+  const what = e.detail?.exe ?? e.detail?.limit
   const label = EVENT_LABEL[e.kind] ?? e.kind
-  return e.kind === 'browser_blocked' && typeof exe === 'string' ? `${label}: ${exe}` : label
+  return typeof what === 'string' ? `${label}: ${what}` : label
 }
 
 function timeline(day: DayData): Entry[] {
   const apps = day.apps.map((a): Entry => ({ at: a.started_at, kind: 'app', label: `${a.process} ${a.title}`, user: a.win_user, blocked: false }))
   const sites = day.web.map((w): Entry => ({ at: w.started_at, kind: 'site', label: `${w.domain} ${w.title}`, user: w.win_user, blocked: false }))
-  const events = day.events.filter((e) => e.kind !== 'heartbeat').map((e): Entry => ({ at: e.at, kind: 'event', label: eventLabel(e), user: e.win_user, blocked: e.kind === 'browser_blocked' }))
+  const events = day.events.filter((e) => e.kind !== 'heartbeat').map((e): Entry => ({ at: e.at, kind: 'event', label: eventLabel(e), user: e.win_user, blocked: e.kind === 'browser_blocked' || e.kind === 'limit_blocked' }))
   return [...apps, ...sites, ...events].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
 }
 
@@ -168,13 +171,23 @@ function DayStats({ data, date }: { data: DayData; date: string }) {
   )
 }
 
-function DayBody({ data, date }: { data: DayData; date: string }) {
+/** Limits only make sense for today; extra time reloads just the limits. */
+function Limits({ initial, data, date }: { initial: TimeLimit[]; data: DayData; date: string }) {
+  const [limits, setLimits] = useState(initial)
+  const { cat } = useContext(CatsContext)
+  const reload = () => { fetchTimeLimits().then((all) => setLimits(all.filter((l) => l.child_id === initial[0]?.child_id)), () => {}) }
+  if (date !== todayJerusalem()) return null
+  return <TodayLimits limits={limits} today={date} onChange={reload} used={(l) => limitUsedMs(l, data.apps, dayRange(date), cat)} />
+}
+
+function DayBody({ data, date, limits }: { data: DayData; date: string; limits: TimeLimit[] }) {
   const range = dayRange(date)
   const hours = byHour(data.apps, range)
   const hourLabel = (i: number) => String(i).padStart(2, '0')
   return (
     <>
       <DayStats data={data} date={date} />
+      <Limits initial={limits} data={data} date={date} />
       <Panel title="Hour by hour">
         <Columns values={hours} max={60} label="Minutes used in each hour"
           labels={hours.map((_, i) => (i % 3 === 0 ? hourLabel(i) : ''))} titles={hours.map((m, i) => `${hourLabel(i)}:00 · ${Math.round(m)} min`)} />
@@ -302,7 +315,7 @@ export function ChildDay({ id, date, week = false }: { id: string; date: string 
     <div className="page" style={{ '--kid': loaded.child.color ?? 'var(--harbor)' } as CSSProperties}>
       <Header child={loaded.child} data={data} date={day} week={week} />
       <Controls id={id} date={day} week={week} user={user} users={users} onUser={setUser} />
-      {week ? <WeekBody data={data} date={day} /> : <DayBody data={data} date={day} />}
+      {week ? <WeekBody data={data} date={day} /> : <DayBody data={data} date={day} limits={loaded.limits} />}
     </div>
     </CatsContext.Provider>
   )

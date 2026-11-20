@@ -50,3 +50,12 @@ Run `install.ps1` as admin with a token from the dashboard, then:
 3. Switch user to the parent account: within 30 s the internet works again. Switch back: off again.
 4. Turn offline time off in Settings: within 5 minutes the internet is back and the timeline shows "Internet back on".
 5. Diagnostics report, "Offline time" section: shows the schedule and `Policy ... BlockInbound,BlockOutbound` while off.
+
+### Time limits
+
+1. In Settings → Time limits, give the child a 15-minute limit on an app they use (e.g. `notepad.exe`).
+2. Signed in as the child, use that app: after ~10 minutes a "5 minutes left" message appears; at 15 minutes the app
+   closes and closes again if reopened. The child's timeline shows both.
+3. On the child's Today page press +15m: within a minute the app opens again. "Undo extra" takes it back.
+4. Restart the laptop: today's count carries on (`C:\ProgramData\ChildMonitor\usage-today.json`), and the limits
+   still apply with the internet off (`limits.json`).

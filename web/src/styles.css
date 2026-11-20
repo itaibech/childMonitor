@@ -287,6 +287,16 @@ details.panel[open] summary { margin-block-end: .75rem; }
   &:hover { text-decoration: underline; }
 }
 
+/* Time limits */
+.add-limit { margin-block-start: .75rem; }
+.add-limit input { flex: 1; min-inline-size: 12rem; }
+.limits { display: grid; gap: .9rem; margin: 0 0 .75rem; padding: 0; list-style: none; }
+.limits li { display: grid; grid-template-columns: 1fr auto; gap: .35rem .75rem; align-items: center; }
+.limits .name { font-weight: 700; overflow-wrap: anywhere; }
+.limits meter { grid-column: 1 / -1; inline-size: 100%; block-size: .7rem; }
+.limits .extend { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .4rem; }
+.limits .over .muted { color: var(--rose); font-weight: 700; }
+
 /* Laptop service version */
 .version { margin: 0 0 .75rem; font-size: .9rem; }
 .update-note { margin: 0 0 .75rem; padding: .7rem 1rem; border-radius: 16px; background: var(--rose-bg); font-weight: 600; }

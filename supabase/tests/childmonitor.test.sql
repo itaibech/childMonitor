@@ -1,5 +1,5 @@
 begin;
-select plan(45);
+select plan(50);
 
 -- as admin
 set local test.admin = 'on';
@@ -126,6 +126,31 @@ select is((select count(*)::int from childmonitor.site_categories), 0, 'non-admi
 select throws_ok($$ insert into childmonitor.site_categories(kind, pattern, category) values ('site', 'x.com', 'Games') $$, '42501', null,
                  'non-admin cannot set categories');
 reset role;
+
+-- time limits: the laptop gets each limit with today's extension and the exe names it covers
+insert into childmonitor.time_limits(id, child_id, app, category, minutes) values
+  ('50000000-0000-0000-0000-000000000001', (select child_id from childmonitor.devices where id = '00000000-0000-0000-0000-0000000000d2'), 'robloxplayerbeta.exe', null, 120),
+  ('50000000-0000-0000-0000-000000000002', (select child_id from childmonitor.devices where id = '00000000-0000-0000-0000-0000000000d2'), null, 'Games', 60);
+insert into childmonitor.site_categories(kind, pattern, category) values ('app', 'zzgame.exe', 'Games') on conflict (kind, pattern) do update set category = 'Games';
+set local role authenticated;
+set local test.admin = 'on';
+select childmonitor.extend_limit('50000000-0000-0000-0000-000000000001', 30);
+select childmonitor.extend_limit('50000000-0000-0000-0000-000000000001', 15);
+select childmonitor.extend_limit('50000000-0000-0000-0000-000000000002', -10);
+set local test.admin = 'off';
+select is((select count(*)::int from childmonitor.time_limits), 0, 'non-admin cannot read time limits');
+reset role;
+set local role anon;
+select is((select l->'minutes' from jsonb_array_elements((childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb))->'limits') l where l->>'name' = 'robloxplayerbeta.exe'),
+          '165'::jsonb, 'app limit includes today''s extensions');
+select is((select l->'minutes' from jsonb_array_elements((childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb))->'limits') l where l->>'name' = 'Games'),
+          '60'::jsonb, 'taking time back never goes below the base limit');
+select ok((select (l->'apps') ? 'zzgame.exe' from jsonb_array_elements((childmonitor.ingest(current_setting('t.tok2'), '{}'::jsonb))->'limits') l where l->>'name' = 'Games'),
+          'category limit covers the category''s apps');
+reset role;
+update childmonitor.time_limits set extra_on = current_date - 2 where id = '50000000-0000-0000-0000-000000000001';
+select is((select l->'minutes' from jsonb_array_elements(childmonitor.limits_for('00000000-0000-0000-0000-0000000000d2')) l where l->>'name' = 'robloxplayerbeta.exe'),
+          '120'::jsonb, 'an old extension has lapsed');
 
 -- child photo: only small inline images
 select throws_ok($$ update childmonitor.children set photo = 'javascript:alert(1)' $$, '23514', null, 'photo must be an image data URL');

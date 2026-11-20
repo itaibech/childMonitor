@@ -125,6 +125,18 @@ public sealed class UploaderTests : IDisposable
     }
 
     [Fact]
+    public async Task Ping_sends_an_empty_batch_and_passes_limits_on()
+    {
+        var (up, _, h, _) = Make((_, _, _) => (HttpStatusCode.OK, "{\"ok\":true,\"limits\":[{\"id\":\"1\"}]}"));
+        string? got = null;
+        up.LimitsReceived += json => got = json;
+        await up.PingAsync(CancellationToken.None);
+        var batch = JsonDocument.Parse(h.Calls.Single().Body).RootElement.GetProperty("batch");
+        Assert.False(batch.TryGetProperty("app_sessions", out _));
+        Assert.Equal("[{\"id\":\"1\"}]", got);
+    }
+
+    [Fact]
     public void Corrupt_supervision_file_loads_empty()
     {
         var path = Path.Combine(_dir, "bad.json");
