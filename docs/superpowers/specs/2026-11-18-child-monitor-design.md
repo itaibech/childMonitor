@@ -189,3 +189,32 @@ the laptop aren't affected). Chosen over turning off the whole laptop (B) or loc
 - Known limits: apps with their own outbound allow rules still connect; a third-party firewall replaces Windows
   Firewall and makes this ineffective; if the service dies mid-night the internet stays off until it restarts
   (automatic restart, and the first check after start always resets the policy).
+
+## Change (Itai, 2026-11-20): app time limits
+
+Daily time limits per child on an app (e.g. RobloxPlayerBeta.exe 2h) or a category (e.g. Games 2h for all games
+together); whichever runs out first blocks (approach C, chosen over app-only A and category-only B). The parent can
+extend a limit for today from the dashboard.
+
+- **Data:** `childmonitor.time_limits(id, child_id, kind app|category, target, minutes, extra_minutes, extra_on date)`.
+  `extra_*` is today's extension, so it lapses at midnight by itself. `ingest` returns the child's limits, each with
+  the exe names it covers: an app limit covers its exe; a category limit covers every app entry in that category
+  (built-in and manual).
+- **Counting (laptop):** the service already receives every foreground app row from the Helper (refreshed every
+  60 s). It adds up today's foreground time per exe for the supervised child, laptop local day, kept in
+  `C:\ProgramData\ChildMonitor\usage-today.json` so a restart doesn't reset it. Works offline with the last limits
+  received (`limits.json`).
+- **Blocking:** checked every 30 s. 5 minutes before a limit, a Windows message tells the child ("Roblox: 5 minutes
+  left today"). At the limit the app is closed, and closed again whenever it starts that day (same mechanism as the
+  browser blocker), with a message "Games time is over for today". Recorded as `limit_warning` / `limit_blocked`
+  events on the child's timeline.
+- **Extending:** +15 / +30 / +60 min buttons on the child's page (and an undo). The service asks the server for
+  settings every 60 s (an empty upload), so an extension or a new limit lands within about a minute.
+- **Dashboard:** Settings → per child "Time limits": add (app from the child's recent apps or typed, or a category),
+  change minutes, remove. Child's Today page: each limit with used / allowed bar, "Blocked" when reached, and the
+  extend buttons.
+- **Non-goals now:** websites aren't blocked (a category limit counts and blocks apps only; time on YouTube in a
+  browser isn't counted against Video). Per-weekday limits, a total screen-time limit, and the child asking for more
+  time from the laptop are later.
+- **Known limits:** time counts in ~1 minute steps, so a block can land up to a minute late; a renamed exe escapes
+  an app limit; needs the service update (1.2.0) on each laptop.
