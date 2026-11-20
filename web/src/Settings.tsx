@@ -2,6 +2,7 @@ import type { ChangeEvent, CSSProperties, FormEvent } from 'react'
 import { Avatar } from './art.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import * as data from './data.ts'
+import { CategorySettings } from './Categories.tsx'
 import { Command } from './Download.tsx'
 import { isOutdated, LATEST } from './health.ts'
 import type { Child, Device, DeviceUser, Offline } from './types.ts'
@@ -241,6 +242,7 @@ export function Settings() {
       <h1>Settings</h1>
       <ChildrenSection children={kids.value} onChange={reload} />
       <OfflineSection children={kids.value} />
+      <CategorySettings />
       <AddLaptop children={kids.value} onAdded={devs.reload} />
       <h2>Laptops</h2>
       {devs.value.length === 0 && <p className="muted">No laptops yet. Add one above, then follow the <a href="#/download">Install</a> steps.</p>}

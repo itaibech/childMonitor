@@ -14,6 +14,10 @@ const m = vi.hoisted(() => ({
   deleteChild: vi.fn(),
   setChildPhoto: vi.fn(),
   setOffline: vi.fn(),
+  fetchCategories: vi.fn(),
+  fetchSiteCategories: vi.fn(),
+  fetchUncategorized: vi.fn(),
+  addCategory: vi.fn(),
 }))
 vi.mock('./data.ts', () => m)
 
@@ -31,6 +35,10 @@ describe('Settings', () => {
     ])
     m.createDevice.mockResolvedValue('tok123')
     m.setSupervised.mockResolvedValue(undefined)
+    m.fetchCategories.mockResolvedValue([{ name: 'Games', color: '#f5b84b', position: 1 }])
+    m.fetchSiteCategories.mockResolvedValue([])
+    m.fetchUncategorized.mockResolvedValue([])
+    m.addCategory.mockResolvedValue(undefined)
   })
   afterEach(() => {
     cleanup()
@@ -74,6 +82,13 @@ describe('Settings', () => {
     m.fetchDevices.mockResolvedValue([{ ...device, last_seen_at: '2026-11-19T10:00:00Z', agent_version: '0.1.0' }])
     render(<Settings />)
     expect(await screen.findByText(/Service 0\.1\.0 is out of date.*install again on Kitchen/)).toBeTruthy()
+  })
+
+  it('adds a category from Settings', async () => {
+    render(<Settings />)
+    fireEvent.change(await screen.findByLabelText('New category name'), { target: { value: 'Art' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add category' }))
+    await waitFor(() => expect(m.addCategory).toHaveBeenCalledWith('Art', '#5b9fd0'))
   })
 
   it('marks admin accounts and toggles supervision', async () => {

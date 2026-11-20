@@ -125,12 +125,31 @@ function Choices({ s, run }: { s: State; run: (p: Promise<unknown>) => void }) {
   )
 }
 
-export function Categories() {
+/** Loads categories, entries and the queue; run() saves a change, then reloads. */
+function useCategories() {
   const [s, setS] = useState<State | null>(null)
   const [error, setError] = useState('')
   const reload = useCallback(() => load().then(setS, (e: unknown) => setError(message(e))), [])
   useEffect(() => { void reload() }, [reload])
   const run = (p: Promise<unknown>) => { setError(''); p.then(reload, (e: unknown) => setError(message(e))) }
+  return { s, error, run }
+}
+
+/** The category list on its own, for the Settings page. */
+export function CategorySettings() {
+  const { s, error, run } = useCategories()
+  if (!s) return error ? <p role="alert">Could not load categories: {error}</p> : <Skeleton />
+  return (
+    <>
+      {error && <p role="alert">{error}</p>}
+      <CategoryList s={s} run={run} />
+      <p className="muted">Sort sites and apps into them on the <a href="#/categories">Categories page</a>.</p>
+    </>
+  )
+}
+
+export function Categories() {
+  const { s, error, run } = useCategories()
   if (!s) return error ? <p role="alert">Could not load categories: {error}</p> : <Skeleton />
   return (
     <div className="page">
